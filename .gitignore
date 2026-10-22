@@ -1,0 +1,12 @@
+/build/
+/build-*/
+/.vs/
+/.vscode/
+/CMakeUserPresets.json
+/*.z64
+/*.n64
+/*.v64
+*.exe
+*.dll
+*.pdb
+
