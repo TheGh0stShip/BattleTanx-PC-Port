@@ -1,6 +1,7 @@
 #include "battletanx/angle.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/lzari.hpp"
+#include "battletanx/resource.hpp"
 #include "battletanx/rom.hpp"
 
 #include <exception>
@@ -18,14 +19,17 @@ int main(int argc, char** argv) {
         std::cout << "Verified BattleTanx " << rom.header().game_code
                   << " Rev " << static_cast<unsigned>(rom.header().revision)
                   << " (" << rom.header().title << ")\n";
-        constexpr std::size_t bundle_start=0x49DCD0U;
-        constexpr std::size_t bundle_end=0x4AC150U;
-        constexpr std::size_t bundle_capacity=0x25800U;
-        const auto decoded=battletanx::lzari_decompress(
-            rom.bytes().subspan(bundle_start,bundle_end-bundle_start),bundle_capacity);
-        const auto bundle=battletanx::Bundle::parse(decoded);
-        std::cout << "Decoded retail resource bundle: " << decoded.size()
-                  << " bytes, " << bundle.entries().size() << " entries\n";
+        std::size_t decoded_bytes=0U;
+        std::size_t decoded_entries=0U;
+        for (const auto& descriptor : battletanx::resource_descriptors()) {
+            const auto decoded=battletanx::load_resource(rom,descriptor);
+            const auto bundle=battletanx::Bundle::parse(decoded);
+            decoded_bytes+=decoded.size();
+            decoded_entries+=bundle.entries().size();
+        }
+        std::cout << "Validated " << battletanx::resource_descriptors().size()
+                  << " retail resource bundles: " << decoded_bytes
+                  << " decoded bytes, " << decoded_entries << " entries\n";
         constexpr std::size_t angle_table_offset=0xC9620U;
         constexpr std::size_t angle_table_size=battletanx::AngleTable::value_count*4U;
         const auto angles=battletanx::AngleTable::from_big_endian(

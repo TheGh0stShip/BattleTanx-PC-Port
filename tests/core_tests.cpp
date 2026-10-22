@@ -5,6 +5,7 @@
 #include "battletanx/geometry.hpp"
 #include "battletanx/lzari.hpp"
 #include "battletanx/rom.hpp"
+#include "battletanx/resource.hpp"
 #include "battletanx/sha256.hpp"
 
 #include <array>
@@ -24,6 +25,22 @@
     } while (false)
 
 int main() {
+    {
+        const auto resources=battletanx::resource_descriptors();
+        CHECK(resources.size()==21U);
+        for (const auto& resource : resources) {
+            CHECK(!resource.name.empty());
+            CHECK(resource.rom_start<resource.rom_end);
+            CHECK(resource.rom_end<=battletanx::Rom::expected_size);
+            CHECK(resource.capacity>0U);
+        }
+        CHECK(battletanx::find_resource("bundle_49DCD0").rom_start==0x49DCD0U);
+        bool rejected=false;
+        try { static_cast<void>(battletanx::find_resource("missing")); }
+        catch (const std::runtime_error&) { rejected=true; }
+        CHECK(rejected);
+    }
+
     {
         std::array<float,battletanx::AngleTable::value_count> values{};
         constexpr double pi=3.14159265358979323846;
