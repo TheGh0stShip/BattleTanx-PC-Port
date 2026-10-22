@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(battletanx_core
+    src/bundle.cpp
+    src/lzari.cpp
     src/rom.cpp
     src/sha256.cpp
 )

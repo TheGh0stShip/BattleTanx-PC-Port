@@ -1,4 +1,6 @@
 #include "battletanx/big_endian.hpp"
+#include "battletanx/bundle.hpp"
+#include "battletanx/lzari.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/sha256.hpp"
 
@@ -18,6 +20,30 @@
     } while (false)
 
 int main() {
+    {
+        constexpr std::array<std::uint8_t,24> prefix{
+            0,0,0,3, 0,0,0,24, 0,0,0,32, 0,0,0,40,
+            0,0,0,0, 0,0,0,0};
+        std::array<std::uint8_t,48> storage{};
+        for (std::size_t index=0; index<prefix.size(); ++index) storage[index]=prefix[index];
+        const auto bundle=battletanx::Bundle::parse(storage);
+        CHECK(bundle.payload_offset()==24U);
+        CHECK(bundle.entries().size()==3U);
+        CHECK(bundle.entries()[0].offset==24U && bundle.entries()[0].size==8U);
+        CHECK(bundle.entries()[2].offset==40U && bundle.entries()[2].size==8U);
+    }
+
+    {
+        constexpr std::array<std::uint8_t,4> empty_stream{};
+        CHECK(battletanx::lzari_decompress(empty_stream).empty());
+        bool rejected=false;
+        try {
+            constexpr std::array<std::uint8_t,4> oversized{0x7F,0xFF,0xFF,0xFF};
+            static_cast<void>(battletanx::lzari_decompress(oversized,1024U));
+        } catch (const std::runtime_error&) { rejected=true; }
+        CHECK(rejected);
+    }
+
     {
         constexpr std::array<std::uint8_t, 8> bytes{0x80,0x37,0x12,0x40,0xFF,0xFE,0x00,0x01};
         const battletanx::BigEndianView view(bytes);

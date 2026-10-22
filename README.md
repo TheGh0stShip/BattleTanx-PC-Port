@@ -36,7 +36,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 The current executable proves the portable build and ROM-loading boundary. It
-validates the complete ROM before exposing its data to the native runtime.
+validates the complete ROM, decompresses one audited retail resource bundle,
+and validates its offset table before exposing entries to the native runtime.
 
 ## Architecture
 
