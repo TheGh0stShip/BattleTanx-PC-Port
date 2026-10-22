@@ -1,5 +1,6 @@
 #include "battletanx/big_endian.hpp"
 #include "battletanx/bundle.hpp"
+#include "battletanx/gameplay.hpp"
 #include "battletanx/lzari.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/sha256.hpp"
@@ -20,6 +21,49 @@
     } while (false)
 
 int main() {
+    {
+        battletanx::PlanarMotion motion{};
+        motion.acceleration_scale=2.0F;
+        motion.turn_scale=0.5F;
+        motion.x=10.0F;
+        motion.z=-4.0F;
+        motion.velocity_x=0.25F;
+        motion.velocity_z=-1.0F;
+        motion.heading_degrees=359.0F;
+        motion.turn_rate=4.0F;
+        motion.acceleration_x=0.0F;
+        motion.acceleration_z=1.0F;
+        motion.turn_acceleration=4.0F;
+        battletanx::advance_planar_motion(motion,0.5F);
+        CHECK(motion.velocity_x==0.0F);
+        CHECK(motion.velocity_z==0.0F);
+        CHECK(motion.x==10.0F && motion.z==-4.0F);
+        CHECK(motion.turn_rate==5.0F);
+        CHECK(motion.heading_degrees==1.5F);
+
+        motion.heading_degrees=-725.0F;
+        motion.turn_rate=0.0F;
+        battletanx::advance_planar_motion(motion,0.0F);
+        CHECK(motion.heading_degrees==355.0F);
+        motion.heading_degrees=360.0F;
+        battletanx::advance_planar_motion(motion,0.0F);
+        CHECK(motion.heading_degrees==360.0F);
+    }
+
+    {
+        constexpr battletanx::ControllerPad previous{0x0001U,-10,20};
+        constexpr battletanx::ControllerPad current{0x0102U,50,-60};
+        const auto input=battletanx::translate_player_input(current,previous);
+        CHECK(input.stick_x==50 && input.stick_y==-60);
+        CHECK(input.held==0x0303U);
+        CHECK(input.pressed==0x0202U);
+        CHECK(input.released==0U);
+
+        const auto released=battletanx::translate_player_input({},current);
+        CHECK(released.held==0U && released.pressed==0U);
+        CHECK(released.released==0x0303U);
+    }
+
     {
         constexpr std::array<std::uint8_t,24> prefix{
             0,0,0,3, 0,0,0,24, 0,0,0,32, 0,0,0,40,
