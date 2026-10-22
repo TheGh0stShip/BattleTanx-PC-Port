@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -39,6 +40,10 @@ class BigEndianView {
 
     [[nodiscard]] std::int32_t s32(std::size_t offset) const {
         return static_cast<std::int32_t>(u32(offset));
+    }
+
+    [[nodiscard]] float f32(std::size_t offset) const {
+        return std::bit_cast<float>(u32(offset));
     }
 
     [[nodiscard]] std::span<const std::uint8_t> subspan(

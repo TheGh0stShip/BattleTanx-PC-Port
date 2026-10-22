@@ -40,6 +40,8 @@ validates the complete ROM, decompresses one audited retail resource bundle,
 and validates its offset table before exposing entries to the native runtime.
 The portable core also contains deterministic recovered controller-state and
 planar-motion behavior covered by host tests.
+The original interpolated 16-bit angle behavior reads its 257-sample sine
+table directly from the verified ROM rather than embedding retail data.
 
 ## Architecture
 

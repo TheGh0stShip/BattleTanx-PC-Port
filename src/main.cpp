@@ -1,8 +1,10 @@
+#include "battletanx/angle.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/lzari.hpp"
 #include "battletanx/rom.hpp"
 
 #include <exception>
+#include <cmath>
 #include <iostream>
 
 int main(int argc, char** argv) {
@@ -24,6 +26,16 @@ int main(int argc, char** argv) {
         const auto bundle=battletanx::Bundle::parse(decoded);
         std::cout << "Decoded retail resource bundle: " << decoded.size()
                   << " bytes, " << bundle.entries().size() << " entries\n";
+        constexpr std::size_t angle_table_offset=0xC9620U;
+        constexpr std::size_t angle_table_size=battletanx::AngleTable::value_count*4U;
+        const auto angles=battletanx::AngleTable::from_big_endian(
+            rom.bytes().subspan(angle_table_offset,angle_table_size));
+        if (std::abs(angles.sine(0x4000U)-1.0F)>0.0001F ||
+            std::abs(angles.cosine(0U)-1.0F)>0.0001F) {
+            throw std::runtime_error("retail angle table failed cardinal-direction validation");
+        }
+        std::cout << "Loaded retail 16-bit angle table: "
+                  << battletanx::AngleTable::value_count << " samples\n";
         std::cout << "Native runtime foundation is ready; gameplay bring-up is in progress.\n";
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';

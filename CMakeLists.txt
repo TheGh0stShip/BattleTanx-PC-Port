@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(battletanx_core
+    src/angle.cpp
     src/bundle.cpp
     src/gameplay.cpp
     src/lzari.cpp

@@ -1,3 +1,4 @@
+#include "battletanx/angle.hpp"
 #include "battletanx/big_endian.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/gameplay.hpp"
@@ -6,6 +7,7 @@
 #include "battletanx/sha256.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
@@ -21,6 +23,20 @@
     } while (false)
 
 int main() {
+    {
+        std::array<float,battletanx::AngleTable::value_count> values{};
+        constexpr double pi=3.14159265358979323846;
+        for (std::size_t index=0; index<values.size(); ++index) {
+            values[index]=static_cast<float>(std::sin(2.0*pi*static_cast<double>(index)/256.0));
+        }
+        const battletanx::AngleTable angles(values);
+        CHECK(std::abs(angles.sine(0U))<0.000001F);
+        CHECK(std::abs(angles.sine(0x4000U)-1.0F)<0.000001F);
+        CHECK(std::abs(angles.cosine(0U)-1.0F)<0.000001F);
+        CHECK(std::abs(angles.cosine(0x4000U))<0.000001F);
+        CHECK(std::abs(angles.sine(0x14000U)-1.0F)<0.000001F);
+    }
+
     {
         battletanx::PlanarMotion motion{};
         motion.acceleration_scale=2.0F;
