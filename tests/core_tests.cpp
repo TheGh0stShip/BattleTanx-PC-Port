@@ -54,10 +54,13 @@ int main() {
 
         const battletanx::RotatedRect axis_aligned{20,10,-2,2,-1,1,0};
         const auto corners=battletanx::rotated_rect_corners(axis_aligned,angles);
-        CHECK(corners[0].x==9.0F && corners[0].z==18.0F);
-        CHECK(corners[1].x==11.0F && corners[1].z==18.0F);
-        CHECK(corners[2].x==11.0F && corners[2].z==22.0F);
-        CHECK(corners[3].x==9.0F && corners[3].z==22.0F);
+        const auto near=[](float actual,float expected) {
+            return std::abs(actual-expected)<0.000001F;
+        };
+        CHECK(near(corners[0].x,9.0F) && near(corners[0].z,18.0F));
+        CHECK(near(corners[1].x,11.0F) && near(corners[1].z,18.0F));
+        CHECK(near(corners[2].x,11.0F) && near(corners[2].z,22.0F));
+        CHECK(near(corners[3].x,9.0F) && near(corners[3].z,22.0F));
 
         const battletanx::RotatedRect quarter_turn{0,0,-2,2,-1,1,0x4000U};
         const auto rotated=battletanx::rotated_rect_corners(quarter_turn,angles);
