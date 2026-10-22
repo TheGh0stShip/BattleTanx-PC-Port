@@ -2,6 +2,7 @@
 #include "battletanx/big_endian.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/gameplay.hpp"
+#include "battletanx/geometry.hpp"
 #include "battletanx/lzari.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/sha256.hpp"
@@ -35,6 +36,20 @@ int main() {
         CHECK(std::abs(angles.cosine(0U)-1.0F)<0.000001F);
         CHECK(std::abs(angles.cosine(0x4000U))<0.000001F);
         CHECK(std::abs(angles.sine(0x14000U)-1.0F)<0.000001F);
+
+        const battletanx::RotatedRect axis_aligned{20,10,-2,2,-1,1,0};
+        const auto corners=battletanx::rotated_rect_corners(axis_aligned,angles);
+        CHECK(corners[0].x==9.0F && corners[0].z==18.0F);
+        CHECK(corners[1].x==11.0F && corners[1].z==18.0F);
+        CHECK(corners[2].x==11.0F && corners[2].z==22.0F);
+        CHECK(corners[3].x==9.0F && corners[3].z==22.0F);
+
+        const battletanx::RotatedRect quarter_turn{0,0,-2,2,-1,1,0x4000U};
+        const auto rotated=battletanx::rotated_rect_corners(quarter_turn,angles);
+        CHECK(std::abs(rotated[0].x-2.0F)<0.000001F);
+        CHECK(std::abs(rotated[0].z+1.0F)<0.000001F);
+        CHECK(std::abs(rotated[2].x+2.0F)<0.000001F);
+        CHECK(std::abs(rotated[2].z-1.0F)<0.000001F);
     }
 
     {

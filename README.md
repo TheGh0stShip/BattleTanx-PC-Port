@@ -42,6 +42,8 @@ The portable core also contains deterministic recovered controller-state and
 planar-motion behavior covered by host tests.
 The original interpolated 16-bit angle behavior reads its 257-sample sine
 table directly from the verified ROM rather than embedding retail data.
+Recovered rotated-bound geometry uses the same angle path and preserves the
+game's corner ordering for later collision and world-query integration.
 
 ## Architecture
 

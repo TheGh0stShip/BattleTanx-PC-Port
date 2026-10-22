@@ -9,6 +9,7 @@ add_library(battletanx_core
     src/angle.cpp
     src/bundle.cpp
     src/gameplay.cpp
+    src/geometry.cpp
     src/lzari.cpp
     src/rom.cpp
     src/sha256.cpp
