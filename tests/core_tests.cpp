@@ -43,10 +43,8 @@ int main() {
 
     {
         std::array<float,battletanx::AngleTable::value_count> values{};
-        constexpr double pi=3.14159265358979323846;
-        for (std::size_t index=0; index<values.size(); ++index) {
-            values[index]=static_cast<float>(std::sin(2.0*pi*static_cast<double>(index)/256.0));
-        }
+        values[64]=1.0F;
+        values[192]=-1.0F;
         const battletanx::AngleTable angles(values);
         CHECK(std::abs(angles.sine(0U))<0.000001F);
         CHECK(std::abs(angles.sine(0x4000U)-1.0F)<0.000001F);
