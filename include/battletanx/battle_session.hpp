@@ -5,6 +5,7 @@
 #include "battletanx/deterministic_rng.hpp"
 #include "battletanx/enemy_control.hpp"
 #include "battletanx/level.hpp"
+#include "battletanx/level_spawns.hpp"
 #include "battletanx/mission_state.hpp"
 #include "battletanx/navigation_route.hpp"
 #include "battletanx/objective_runtime.hpp"
@@ -64,6 +65,7 @@ struct UnitSpawn {
     float x{}, z{};
     std::uint16_t heading{};
     std::uint16_t flags{};
+    std::uint8_t squad_slot{0xFFU};
 };
 
 struct RespawnPoint {
@@ -89,6 +91,9 @@ public:
     // Level pickups, at most pickup_capacity. Returns false when full.
     static constexpr std::size_t pickup_capacity=256U;
     bool add_pickup(const PickupRecord& pickup);
+    bool add_spawner(const SpawnerDefinition& definition);
+    void set_spawner_budget(std::uint8_t owner,std::int32_t budget);
+    void set_spawner_gate(std::uint8_t owner,bool open);
     void set_pickup_weights(const PickupWeights& weights) { pickup_weights_=weights; }
     [[nodiscard]] std::span<const PickupRecord> pickups() const noexcept { return pickups_; }
     // Damage from a source outside the session's own shells (splash, contact).
@@ -146,6 +151,7 @@ private:
     void release_destroyed_units();
     void spawn_due_respawns();
     void update_pickup_state();
+    void update_spawners();
     void initialize_objective();
     void update_objective();
 
@@ -160,6 +166,14 @@ private:
     std::array<bool,owner_capacity> objective_bases_{};
     std::array<std::optional<RespawnPoint>,owner_capacity> respawn_points_{};
     std::vector<PickupRecord> pickups_;
+    struct SessionSpawner {
+        SpawnerState state;
+        std::optional<LinkedEffectView> linked;
+    };
+    static constexpr std::size_t spawner_capacity=256U;
+    std::vector<SessionSpawner> spawners_;
+    std::array<std::int32_t,owner_capacity> spawner_budgets_{};
+    std::array<bool,owner_capacity> spawner_gates_{};
     std::optional<PickupWeights> pickup_weights_;
     MissionState mission_;
     std::optional<ObjectiveRuntime> objective_;

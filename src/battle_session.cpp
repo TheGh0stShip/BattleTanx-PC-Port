@@ -1,6 +1,8 @@
 #include "battletanx/battle_session.hpp"
+#include "battletanx/geometry.hpp"
 #include "battletanx/unit_kinds.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 
@@ -167,6 +169,7 @@ BattleSession::BattleSession(SessionConfig config,const AngleTable& angles,UnitM
     config_.combat.game_mode=config_.mission.game_kind;
     config_.pickups.game_mode=static_cast<std::int32_t>(config_.mission.game_kind);
     pickups_.reserve(pickup_capacity);
+    spawners_.reserve(spawner_capacity);
     if (!motion_) throw std::invalid_argument("battle session requires a unit motion boundary");
 }
 
@@ -190,12 +193,28 @@ void BattleSession::add_owner(std::uint8_t index,const OwnerSetup& setup) {
 std::optional<EntityId> BattleSession::spawn_unit(const UnitSpawn& spawn) {
     if (spawn.owner>=owner_capacity || !owners_[spawn.owner].present) return std::nullopt;
     OwnerRecord& owner=owners_[spawn.owner];
+    std::array<bool,5> occupied{};
+    units_.for_each([&](EntityId,const UnitRecord& existing) {
+        if (existing.alive && existing.owner==spawn.owner &&
+            static_cast<std::size_t>(existing.squad_slot)<occupied.size()) {
+            occupied[existing.squad_slot]=true;
+        }
+    });
+    std::uint8_t squad_slot=spawn.squad_slot;
+    if (squad_slot==0xFFU) {
+        const auto free=std::find(occupied.begin(),occupied.end(),false);
+        if (free==occupied.end()) return std::nullopt;
+        squad_slot=static_cast<std::uint8_t>(free-occupied.begin());
+    } else if (static_cast<std::size_t>(squad_slot)>=occupied.size() || occupied[squad_slot]) {
+        return std::nullopt;
+    }
     const auto id=units_.allocate();
     if (!id) return std::nullopt;
     UnitRecord& unit=*units_.get(*id);
     unit=make_unit(spawn.kind,spawn.owner,owner.team,spawn.x,spawn.z,spawn.heading,tick_,
                    owner.computer ? UnitControl::computer : UnitControl::player);
     unit.flags=spawn.flags;
+    unit.squad_slot=squad_slot;
     unit.primary=!owner.computer && owner.live_units==0U;
     ++owner.live_units;
     GameplayEvent event;
@@ -213,6 +232,72 @@ bool BattleSession::add_pickup(const PickupRecord& pickup) {
     if (pickups_.size()>=pickup_capacity) return false;
     pickups_.push_back(pickup);
     return true;
+}
+
+bool BattleSession::add_spawner(const SpawnerDefinition& definition) {
+    if (spawners_.size()>=spawner_capacity || definition.owner>=owner_capacity) return false;
+    SessionSpawner runtime;
+    const std::int32_t serial=definition.linked ? 1 : 0;
+    runtime.state=make_spawner_state(definition,serial);
+    // The linked kind-5 object is not yet simulated. Keep its serial stable
+    // so the spawner remains live; its future destruction can replace this view.
+    if (definition.linked) runtime.linked=LinkedEffectView{serial,false};
+    spawners_.push_back(runtime);
+    return true;
+}
+
+void BattleSession::set_spawner_budget(std::uint8_t owner,std::int32_t budget) {
+    if (owner>=owner_capacity) throw std::out_of_range("spawner owner index");
+    spawner_budgets_[owner]=budget;
+}
+
+void BattleSession::set_spawner_gate(std::uint8_t owner,bool open) {
+    if (owner>=owner_capacity) throw std::out_of_range("spawner owner index");
+    spawner_gates_[owner]=open;
+}
+
+void BattleSession::update_spawners() {
+    for (SessionSpawner& runtime : spawners_) {
+        const std::uint8_t owner_index=runtime.state.definition.owner;
+        if (owner_index>=owner_capacity || !owners_[owner_index].present) continue;
+        SpawnerOwnerView owner;
+        owner.budget=spawner_budgets_[owner_index];
+        owner.gate_open=spawner_gates_[owner_index];
+        units_.for_each([&](EntityId,const UnitRecord& unit) {
+            if (unit.alive && unit.owner==owner_index &&
+                static_cast<std::size_t>(unit.squad_slot)<owner.squad_slot_alive.size()) {
+                owner.squad_slot_alive[unit.squad_slot]=true;
+            }
+        });
+        const SpawnAreaClear area_clear=[&](const SpawnAreaQuery& query) {
+            const auto definition=unit_kind_definition(query.shape);
+            if (!definition) return false;
+            const retail::Footprint& f=definition->footprint;
+            const OrientedRect candidate{
+                query.x,query.z,static_cast<float>(f.min_x),static_cast<float>(f.max_x),
+                static_cast<float>(f.min_z),static_cast<float>(f.max_z),query.angle};
+            bool clear=true;
+            units_.for_each([&](EntityId,const UnitRecord& unit) {
+                if (!clear || !unit.alive) return;
+                const retail::Footprint& u=unit.footprint;
+                const OrientedRect other{
+                    unit.x,unit.z,static_cast<float>(u.min_x),static_cast<float>(u.max_x),
+                    static_cast<float>(u.min_z),static_cast<float>(u.max_z),
+                    degrees_to_retail_angle(unit.heading_degrees)};
+                if (oriented_rects_overlap(candidate,other,angles_)) clear=false;
+            });
+            return clear;
+        };
+        const SpawnerUpdateResult result=update_spawner(
+            runtime.state,runtime.linked,owner,tick_,rng_,area_clear);
+        spawner_budgets_[owner_index]=owner.budget;
+        if (!result.request) continue;
+        const SpawnRequest& request=*result.request;
+        const auto kind=static_cast<retail::UnitKind>(request.shape);
+        const auto spawned=spawn_unit(UnitSpawn{
+            kind,request.owner,request.x,request.z,request.heading,0U,request.squad_slot});
+        if (!spawned && spawner_budgets_[owner_index]>=0) ++spawner_budgets_[owner_index];
+    }
 }
 
 void BattleSession::update_pickup_state() {
@@ -379,7 +464,17 @@ void BattleSession::update_objective() {
     ObjectiveInput input;
     input.match=mission_.state();
     input.tick=tick_;
-    for (std::size_t i=0U; i<owner_capacity; ++i) input.squad_alive[i]=mission_.squad_alive(i);
+    for (std::size_t i=0U; i<owner_capacity; ++i) {
+        bool pending_spawner=false;
+        if (spawner_budgets_[i]!=0) {
+            pending_spawner=std::any_of(
+                spawners_.begin(),spawners_.end(),[i](const SessionSpawner& runtime) {
+                    return !runtime.state.finished &&
+                           runtime.state.definition.owner==static_cast<std::uint8_t>(i);
+                });
+        }
+        input.squad_alive[i]=mission_.squad_alive(i) || pending_spawner;
+    }
     const ObjectiveResult result=objective_->step(input);
     std::array<OwnerResult,owner_capacity> owner_results{};
     for (std::size_t i=0U; i<owner_capacity; ++i) owner_results[i]=objective_->result(i);
@@ -394,6 +489,7 @@ void BattleSession::step(const SessionInput& input) {
         WeaponContext weapons{projectiles,weapon_state_,effects_,rng_};
         update_weapon_projectiles(weapons);
         update_units(input);
+        update_spawners();
         update_pickup_state();
     }
     mission_.step(owners_,units_,tick_,input.start_pressed,input.advance,events_);
@@ -440,6 +536,26 @@ void BattleSession::serialize(StateWriter& writer) const {
         writer.boolean(pickup.removed);
     }
     weapon_state_.serialize(writer);
+    writer.u32(static_cast<std::uint32_t>(spawners_.size()));
+    for (const SessionSpawner& runtime : spawners_) {
+        const SpawnerState& state=runtime.state;
+        const SpawnerDefinition& d=state.definition;
+        writer.u32(d.placement_index);
+        writer.f32(d.x); writer.f32(d.z); writer.u16(d.heading); writer.u16(d.id);
+        writer.u8(d.owner); writer.u8(d.mode); writer.u8(d.shape); writer.u8(d.count_field);
+        writer.s16(d.interval_ticks); writer.u8(d.parameter); writer.u8(d.gate_bits);
+        writer.boolean(d.linked); writer.u8(static_cast<std::uint8_t>(d.source));
+        writer.s32(state.last_tick); writer.s32(state.linked_serial); writer.boolean(state.finished);
+        writer.boolean(runtime.linked.has_value());
+        if (runtime.linked) {
+            writer.s32(runtime.linked->serial);
+            writer.boolean(runtime.linked->destroyed);
+        }
+    }
+    for (std::size_t owner=0U; owner<owner_capacity; ++owner) {
+        writer.s32(spawner_budgets_[owner]);
+        writer.boolean(spawner_gates_[owner]);
+    }
 }
 
 std::string BattleSession::checksum() const {

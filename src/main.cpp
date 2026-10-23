@@ -138,6 +138,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             static_cast<std::int16_t>(std::max(spawn_plan->owners[owner].reserve,0)),false,
             scale,scale,wave.game_kind==3 || wave.game_kind==6,
             battletanx::owner_difficulty_from_profile(profile)});
+        session.set_spawner_budget(
+            static_cast<std::uint8_t>(owner),spawn_plan->owners[owner].reserve);
         if (!spawn_plan->respawn_points[owner].points.empty()) {
             const auto& point=spawn_plan->respawn_points[owner].points.front();
             session.set_respawn_point(static_cast<std::uint8_t>(owner),
@@ -147,11 +149,16 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     std::optional<battletanx::EntityId> player_id;
     for (const auto& planned:spawn_plan->units) {
         const auto id=session.spawn_unit({planned.kind,planned.owner,planned.x,planned.z,
-                                          planned.heading,planned.flags});
+                                          planned.heading,planned.flags,planned.slot});
         if (!id) throw std::runtime_error("failed to spawn a planned campaign unit");
         if (planned.unit_id==spawn_plan->player.unit_id) player_id=id;
     }
     if (!player_id) throw std::runtime_error("failed to spawn the player tank");
+    for (const auto& planned:spawn_plan->spawners) {
+        if (!session.add_spawner(planned.definition)) {
+            throw std::runtime_error("failed to register a planned campaign spawner");
+        }
+    }
     battletanx::PickupWeights pickup_weights;
     std::uint16_t pickup_slot=0U;
     for (const auto& placement:spawn_plan->pickups) {
