@@ -97,8 +97,13 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         const int tank_y=screen_y(tank.z);
         const int nose_x=screen_x(tank.x+angles.sine(heading)*80.0F);
         const int nose_y=screen_y(tank.z+angles.cosine(heading)*80.0F);
+        const auto turret=static_cast<std::uint16_t>(
+            tank.turret_degrees*(65536.0F/360.0F));
+        const int turret_x=screen_x(tank.x+angles.sine(turret)*105.0F);
+        const int turret_y=screen_y(tank.z+angles.cosine(turret)*105.0F);
         fill_rectangle(pixels,tank_x-5,tank_y-5,10,10,0x0040E080U);
-        draw_line(pixels,tank_x,tank_y,nose_x,nose_y,0x00F0D040U);
+        draw_line(pixels,tank_x,tank_y,nose_x,nose_y,0x0080A050U);
+        draw_line(pixels,tank_x,tank_y,turret_x,turret_y,0x00F0D040U);
         if (projectile.active) {
             fill_rectangle(pixels,screen_x(projectile.x)-2,screen_y(projectile.z)-2,
                            5,5,0x00F08030U);

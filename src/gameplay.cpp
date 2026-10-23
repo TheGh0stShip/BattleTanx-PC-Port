@@ -8,6 +8,8 @@ namespace battletanx {
 namespace {
 constexpr double kStationaryThreshold=0.5;
 constexpr std::uint32_t button_a=0x8000U;
+constexpr std::uint32_t button_c_left=0x0002U;
+constexpr std::uint32_t button_c_right=0x0001U;
 
 float wrap_degrees(float value) {
     while (value>360.0F) value-=360.0F;
@@ -86,9 +88,12 @@ void update_player_tank(PlayerTank& tank,const PlayerInput& input,
     constexpr float drag=250.0F;
     const float steering=std::clamp(static_cast<float>(input.stick_x),-80.0F,80.0F);
     const float throttle=std::clamp(static_cast<float>(input.stick_y),-80.0F,80.0F);
+    const float turret_aim=(input.held&button_c_left ? 80.0F : 0.0F)-
+                           (input.held&button_c_right ? 80.0F : 0.0F);
     const float turn=steering*turn_acceleration*frame_rate_scale;
     tank.heading_degrees=wrap_degrees(tank.heading_degrees-turn);
-    tank.turret_degrees=wrap_degrees(tank.turret_degrees-turn);
+    tank.turret_degrees=wrap_degrees(
+        tank.turret_degrees-turn+turret_aim*turn_acceleration*frame_rate_scale);
 
     const auto angle=degrees_to_angle(tank.heading_degrees);
     PlanarMotion motion{};
@@ -119,7 +124,7 @@ void update_player_tank(PlayerTank& tank,const PlayerInput& input,
 
 bool try_fire_player_projectile(PlayerProjectile& projectile,const PlayerTank& tank,
                                 const PlayerInput& input,const AngleTable& angles) {
-    if (projectile.active || (input.pressed&button_a)==0U) return false;
+    if (projectile.active || (input.held&button_a)==0U) return false;
     constexpr float muzzle_offset=28.0F;
     constexpr float projectile_speed=18.0F;
     const auto angle=degrees_to_angle(tank.turret_degrees);

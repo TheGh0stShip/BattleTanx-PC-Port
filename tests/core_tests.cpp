@@ -228,6 +228,7 @@ int main() {
         CHECK(tank.x>start_x && tank.navigation_triangle==1U);
         battletanx::PlayerProjectile projectile{};
         battletanx::PlayerInput fire{};
+        fire.held=0x8000U;
         fire.pressed=0x8000U;
         CHECK(battletanx::try_fire_player_projectile(projectile,tank,fire,angles));
         CHECK(projectile.active && projectile.frames_remaining==120U);
