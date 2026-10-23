@@ -258,14 +258,14 @@ int main() {
         CHECK(tank.navigation_triangle==1U);
         CHECK(tank.x==-400.0F && tank.z==-400.0F && tank.heading_degrees==90.0F);
         const float start_x=tank.x;
-        battletanx::PlayerInput drive{};
-        drive.stick_y=80;
+        battletanx::DriveInput drive{};
+        drive.throttle=80.0F;
         battletanx::update_player_tank(tank,drive,drive_nav,angles);
         CHECK(tank.x>start_x && tank.navigation_triangle==1U);
         battletanx::PlayerProjectile projectile{};
-        battletanx::PlayerInput fire{};
-        fire.held=0x2000U;
-        fire.pressed=0x2000U;
+        battletanx::DriveInput fire{};
+        fire.fire=true;
+        fire.fire_pressed=true;
         CHECK(battletanx::try_fire_player_projectile(
             projectile,tank,fire,drive_nav,angles,0));
         CHECK(projectile.active && projectile.frames_remaining==112U);
@@ -349,6 +349,19 @@ int main() {
         const auto released=battletanx::translate_player_input({},current);
         CHECK(released.held==0U && released.pressed==0U);
         CHECK(released.released==0x0303U);
+
+        battletanx::InputBindings bindings;
+        bindings.words={0x2000U,0x8000U,0x4000U,0x20U,0x8U,0x4U,
+                        0x100000U,0x100000U,0x400000U,0x400000U,
+                        0x200000U,0x200000U,1U,2U,0x200000U,
+                        0x200000U,0x100000U};
+        const auto controls=battletanx::translate_drive_input(
+            battletanx::PlayerInput{80,-60,0x2000U,0x2000U,0U},bindings);
+        CHECK(controls.throttle==-60.0F && controls.rotation==80.0F);
+        CHECK(controls.aim==0.0F && controls.fire && controls.fire_pressed);
+        const auto deadzone_controls=battletanx::translate_drive_input(
+            battletanx::PlayerInput{3,-3,0U,0U,0U},bindings);
+        CHECK(deadzone_controls.throttle==0.0F && deadzone_controls.rotation==0.0F);
     }
 
     {

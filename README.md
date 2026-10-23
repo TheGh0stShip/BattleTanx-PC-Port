@@ -50,7 +50,9 @@ nearest-cell search used during route initialization. Native straight-line
 route traversal follows the recovered corner-adjacency rules and reports
 target, boundary, blocked-cell, and retail 248-step limit outcomes.
 The portable core also contains deterministic recovered controller-state and
-planar-motion behavior covered by host tests. The first native gameplay slice
+planar-motion behavior covered by host tests. The default controller binding
+preset is decoded from the verified retail ROM and evaluated with the recovered
+analog/digital axis rules. The first native gameplay slice
 adds a player-tank state, navigation-constrained movement, and a single
 bounded projectile. The current M1A1 drive slice uses its recovered retail
 turn, acceleration, grip, and drag constants. The temporary top-down

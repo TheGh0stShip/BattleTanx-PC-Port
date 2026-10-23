@@ -1,4 +1,5 @@
 #include "battletanx/gameplay.hpp"
+#include "battletanx/big_endian.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -7,7 +8,9 @@
 namespace battletanx {
 namespace {
 constexpr double kStationaryThreshold=0.5;
-constexpr std::uint32_t button_z=0x2000U;
+constexpr std::uint32_t axis_unbound=0x00100000U;
+constexpr std::uint32_t axis_stick_x=0x00200000U;
+constexpr std::uint32_t axis_stick_y=0x00400000U;
 
 float wrap_degrees(float value) {
     while (value>360.0F) value-=360.0F;
@@ -17,6 +20,20 @@ float wrap_degrees(float value) {
 
 std::uint16_t degrees_to_angle(float degrees) {
     return static_cast<std::uint16_t>(degrees*(65536.0F/360.0F));
+}
+
+float read_bound_axis(const PlayerInput& input,std::uint32_t positive,
+                      std::uint32_t negative) {
+    const auto analog=[](std::int8_t value) {
+        return std::abs(static_cast<float>(value))>3.0F
+            ? static_cast<float>(value) : 0.0F;
+    };
+    if (positive==axis_stick_x) return analog(input.stick_x);
+    if (positive==axis_stick_y) return analog(input.stick_y);
+    if (positive==axis_unbound) return 0.0F;
+    float value=(input.held&positive)!=0U ? 80.0F : 0.0F;
+    if ((input.held&negative)!=0U) value-=80.0F;
+    return value;
 }
 
 std::uint32_t merge_direction_buttons(std::uint16_t buttons) {
@@ -60,6 +77,31 @@ PlayerInput translate_player_input(const ControllerPad& current,
     };
 }
 
+InputBindings load_default_input_bindings(const Rom& rom) {
+    constexpr std::size_t offset=0xB5D50U;
+    constexpr std::size_t bytes=17U*4U;
+    BigEndianView view(rom.bytes().subspan(offset,bytes));
+    InputBindings result;
+    for (std::size_t index=0U; index<result.words.size(); ++index) {
+        result.words[index]=view.u32(index*4U);
+    }
+    return result;
+}
+
+DriveInput translate_drive_input(const PlayerInput& input,const InputBindings& bindings) {
+    const auto& words=bindings.words;
+    return DriveInput{
+        read_bound_axis(input,words[8],words[9]),
+        read_bound_axis(input,words[10],words[11]),
+        -read_bound_axis(input,words[6],words[7]),
+        (input.held&words[0])!=0U,
+        (input.pressed&words[0])!=0U,
+        (input.held&words[1])!=0U,
+        (input.pressed&words[1])!=0U,
+        (input.held&words[16])!=0U,
+    };
+}
+
 PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navigation) {
     for (const auto& item : world.items) {
         if (item.type!=25 || (item.parameter>>4U)!=0U) continue;
@@ -82,17 +124,15 @@ PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navi
     throw std::runtime_error("level has no group-zero player spawn marker");
 }
 
-void update_player_tank(PlayerTank& tank,const PlayerInput& input,
+void update_player_tank(PlayerTank& tank,const DriveInput& input,
                         const NavigationLevel& navigation,const AngleTable& angles) {
     constexpr float frame_rate_scale=0.15F;
     constexpr float turn_acceleration=0.18F;
     constexpr float acceleration_scale=1.0F/100.0F;
     constexpr float grip=300.0F;
     constexpr float drag=250.0F;
-    float steering=std::abs(static_cast<float>(input.stick_x))>3.0F
-        ? static_cast<float>(input.stick_x) : 0.0F;
-    const float throttle=std::abs(static_cast<float>(input.stick_y))>3.0F
-        ? std::clamp(static_cast<float>(input.stick_y),-200.0F,200.0F) : 0.0F;
+    float steering=input.rotation;
+    const float throttle=std::clamp(input.throttle,-200.0F,200.0F);
     if (tank.velocity_x<5.0F && tank.velocity_z<5.0F) steering*=1.5F;
     const float turn=steering*turn_acceleration*frame_rate_scale;
     tank.heading_degrees=wrap_degrees(tank.heading_degrees-turn);
@@ -128,10 +168,10 @@ void update_player_tank(PlayerTank& tank,const PlayerInput& input,
 }
 
 bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
-                                const PlayerInput& input,const NavigationLevel& navigation,
+                                const DriveInput& input,const NavigationLevel& navigation,
                                 const AngleTable& angles,std::int32_t game_tick) {
     constexpr std::int32_t cooldown=30;
-    if (projectile.active || (input.held&button_z)==0U || tank.primary_ammo<=0 ||
+    if (projectile.active || !input.fire || tank.primary_ammo<=0 ||
         tank.primary_last_tick+cooldown>=game_tick) return false;
     constexpr float muzzle_offset=45.0F;
     constexpr float projectile_speed=110.0F;

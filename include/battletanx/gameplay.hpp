@@ -3,6 +3,7 @@
 #include "battletanx/angle.hpp"
 #include "battletanx/level.hpp"
 
+#include <array>
 #include <cstdint>
 
 namespace battletanx {
@@ -36,6 +37,21 @@ struct PlayerInput {
     std::uint32_t released{};
 };
 
+struct InputBindings {
+    std::array<std::uint32_t,17> words{};
+};
+
+struct DriveInput {
+    float throttle{};
+    float rotation{};
+    float aim{};
+    bool fire{};
+    bool fire_pressed{};
+    bool special{};
+    bool special_pressed{};
+    bool brake{};
+};
+
 struct PlayerTank {
     float x{};
     float z{};
@@ -61,11 +77,13 @@ struct PlayerProjectile {
 void advance_planar_motion(PlanarMotion& motion, float elapsed_seconds);
 PlayerInput translate_player_input(const ControllerPad& current,
                                    const ControllerPad& previous);
+InputBindings load_default_input_bindings(const Rom& rom);
+DriveInput translate_drive_input(const PlayerInput& input,const InputBindings& bindings);
 PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navigation);
-void update_player_tank(PlayerTank& tank,const PlayerInput& input,
+void update_player_tank(PlayerTank& tank,const DriveInput& input,
                         const NavigationLevel& navigation,const AngleTable& angles);
 bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
-                                const PlayerInput& input,const NavigationLevel& navigation,
+                                const DriveInput& input,const NavigationLevel& navigation,
                                 const AngleTable& angles,std::int32_t game_tick);
 void update_player_projectile(PlayerProjectile& projectile,
                               const NavigationLevel& navigation);

@@ -48,7 +48,8 @@ void draw_line(std::array<std::uint32_t,battletanx::native_width*battletanx::nat
 
 void run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::NavigationLevel& navigation,
-                             const battletanx::AngleTable& angles) {
+                             const battletanx::AngleTable& angles,
+                             const battletanx::InputBindings& bindings) {
     auto platform=battletanx::Platform::create("BattleTanx native source port");
     std::array<std::uint32_t,battletanx::native_width*battletanx::native_height> pixels{};
     std::array<battletanx::ControllerPad,4> previous{};
@@ -66,7 +67,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     };
     while (platform->pump(current)) {
         const auto frame_start=std::chrono::steady_clock::now();
-        const auto input=battletanx::translate_player_input(current[0],previous[0]);
+        const auto pad=battletanx::translate_player_input(current[0],previous[0]);
+        const auto input=battletanx::translate_drive_input(pad,bindings);
         previous=current;
         battletanx::update_player_tank(tank,input,navigation,angles);
         battletanx::try_fire_player_projectile(
@@ -155,6 +157,7 @@ int main(int argc, char** argv) {
         constexpr std::size_t angle_table_size=battletanx::AngleTable::value_count*4U;
         const auto angles=battletanx::AngleTable::from_big_endian(
             rom.bytes().subspan(angle_table_offset,angle_table_size));
+        const auto bindings=battletanx::load_default_input_bindings(rom);
         if (std::abs(angles.sine(0x4000U)-1.0F)>0.0001F ||
             std::abs(angles.cosine(0U)-1.0F)>0.0001F) {
             throw std::runtime_error("retail angle table failed cardinal-direction validation");
@@ -181,7 +184,9 @@ int main(int argc, char** argv) {
                   << world_groups << " groups, " << world_items << " placements, "
                   << navigation_triangles << " navigation triangles\n";
         std::cout << "Native runtime foundation is ready; gameplay bring-up is in progress.\n";
-        if (show_window) run_platform_diagnostic(*preview_world,*preview_navigation,angles);
+        if (show_window) {
+            run_platform_diagnostic(*preview_world,*preview_navigation,angles,bindings);
+        }
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';
         return 1;

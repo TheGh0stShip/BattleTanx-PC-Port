@@ -52,6 +52,8 @@ does not execute cartridge code.
   reproducing cartridge pointers or executing original machine code. The
   initial M1A1 slice uses its recovered retail drive constants; other vehicle
   tables remain outside this slice.
+- Controller actions are derived from the retail big-endian binding preset;
+  host devices only populate the original pad representation.
 - Persistent state uses a standard 32 KiB Controller Pak filesystem image and
   retains the retail 256-byte BattleTanx game-file payload and byte-sum
   checksum. The host supplies durable per-user storage; it does not reinterpret
