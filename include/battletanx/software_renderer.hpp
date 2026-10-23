@@ -3,6 +3,7 @@
 #include "battletanx/model.hpp"
 #include "battletanx/render_math.hpp"
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -24,6 +25,8 @@ struct DrawList {
 };
 
 std::size_t select_model_lod(std::uint8_t lod_count,float distance_squared) noexcept;
+std::size_t clipped_near_vertex_count(
+    const std::array<std::array<float,4>,3>& triangle) noexcept;
 
 class SoftwareRenderer {
   public:

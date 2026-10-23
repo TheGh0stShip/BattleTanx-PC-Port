@@ -65,6 +65,15 @@ int main() {
     CHECK(battletanx::select_model_lod(3U,1000000.0F)==0U);
     CHECK(battletanx::select_model_lod(3U,1000001.0F)==1U);
     CHECK(battletanx::select_model_lod(3U,2890001.0F)==2U);
+    CHECK(battletanx::clipped_near_vertex_count({{{0.0F,0.0F,0.0F,1.0F},
+                                                   {1.0F,0.0F,0.0F,1.0F},
+                                                   {0.0F,1.0F,0.0F,1.0F}}})==3U);
+    CHECK(battletanx::clipped_near_vertex_count({{{0.0F,0.0F,-2.0F,1.0F},
+                                                   {1.0F,0.0F,0.0F,1.0F},
+                                                   {0.0F,1.0F,0.0F,1.0F}}})==4U);
+    CHECK(battletanx::clipped_near_vertex_count({{{0.0F,0.0F,-2.0F,1.0F},
+                                                   {1.0F,0.0F,-2.0F,1.0F},
+                                                   {0.0F,1.0F,-2.0F,1.0F}}})==0U);
     {
         const battletanx::TerrainTriangle triangle{{{{0.0F,10.0F,0.0F},
                                                       {10.0F,20.0F,0.0F},

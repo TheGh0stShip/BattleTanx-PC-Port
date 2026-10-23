@@ -59,7 +59,7 @@ turn, acceleration, grip, drag, and rotated footprint. Static collision uses
 the recovered level-object type filter and each object's rotated level shape.
 The current native presentation decodes and draws the retail world and tank
 meshes with their textures through a host-owned software z-buffer. Terrain
-pitch/roll terrain alignment, near-plane polygon clipping, and several uncommon
+pitch/roll alignment and several uncommon
 material modes remain bring-up work rather than a claim of complete retail
 rendering fidelity.
 The original interpolated 16-bit angle behavior reads its 257-sample sine

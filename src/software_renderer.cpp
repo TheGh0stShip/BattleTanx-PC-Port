@@ -15,6 +15,38 @@ struct RasterVertex {
     float r_over_w{},g_over_w{},b_over_w{},a_over_w{};
 };
 
+struct ClipVertex {
+    float x{},y{},z{},w{};
+    float u{},v{},r{},g{},b{},a{};
+};
+
+ClipVertex interpolate_clip(const ClipVertex& first,const ClipVertex& second,float amount) {
+    const auto mix=[&](float left,float right) { return left+(right-left)*amount; };
+    return {mix(first.x,second.x),mix(first.y,second.y),mix(first.z,second.z),
+            mix(first.w,second.w),mix(first.u,second.u),mix(first.v,second.v),
+            mix(first.r,second.r),mix(first.g,second.g),mix(first.b,second.b),
+            mix(first.a,second.a)};
+}
+
+std::size_t clip_near_plane(const std::array<ClipVertex,3>& input,
+                            std::array<ClipVertex,4>& output) {
+    std::size_t count=0U;
+    for (std::size_t index=0U; index<input.size(); ++index) {
+        const auto& current=input[index];
+        const auto& next=input[(index+1U)%input.size()];
+        const float current_distance=current.z+current.w;
+        const float next_distance=next.z+next.w;
+        const bool current_inside=current_distance>=0.0F;
+        const bool next_inside=next_distance>=0.0F;
+        if (current_inside) output[count++]=current;
+        if (current_inside!=next_inside) {
+            output[count++]=interpolate_clip(
+                current,next,current_distance/(current_distance-next_distance));
+        }
+    }
+    return count;
+}
+
 std::array<float,4> transform(const Matrix4& matrix,float x,float y,float z,float w) {
     return {matrix[0]*x+matrix[1]*y+matrix[2]*z+matrix[3]*w,
             matrix[4]*x+matrix[5]*y+matrix[6]*z+matrix[7]*w,
@@ -103,6 +135,70 @@ std::uint32_t combine(const NativeMaterial& material,std::uint32_t texture,
     return texture;
 }
 
+void rasterize_triangle(int width,int height,std::vector<std::uint32_t>& color,
+                        std::vector<float>& depth,const NativeMaterial& material,
+                        const std::array<ClipVertex,3>& clip_vertices) {
+    std::array<RasterVertex,3> vertices{};
+    for (std::size_t corner=0U; corner<vertices.size(); ++corner) {
+        const auto& clip=clip_vertices[corner];
+        if (!std::isfinite(clip.w) || clip.w<=0.000001F || clip.z>clip.w) return;
+        const float inverse_w=1.0F/clip.w;
+        vertices[corner]={
+            (clip.x*inverse_w*0.5F+0.5F)*width,
+            (0.5F-clip.y*inverse_w*0.5F)*height,
+            clip.z*inverse_w,inverse_w,
+            clip.u*inverse_w,clip.v*inverse_w,
+            clip.r*inverse_w,clip.g*inverse_w,
+            clip.b*inverse_w,clip.a*inverse_w};
+    }
+    const float area=edge(vertices[0].x,vertices[0].y,
+                           vertices[1].x,vertices[1].y,
+                           vertices[2].x,vertices[2].y);
+    if (std::abs(area)<=0.000001F ||
+        (material.cull==CullMode::back && area>0.0F)) return;
+    const int minimum_x=std::max(0,static_cast<int>(std::floor(std::min(
+        {vertices[0].x,vertices[1].x,vertices[2].x}))));
+    const int maximum_x=std::min(width-1,static_cast<int>(std::ceil(std::max(
+        {vertices[0].x,vertices[1].x,vertices[2].x}))));
+    const int minimum_y=std::max(0,static_cast<int>(std::floor(std::min(
+        {vertices[0].y,vertices[1].y,vertices[2].y}))));
+    const int maximum_y=std::min(height-1,static_cast<int>(std::ceil(std::max(
+        {vertices[0].y,vertices[1].y,vertices[2].y}))));
+    for (int y=minimum_y; y<=maximum_y; ++y) {
+        for (int x=minimum_x; x<=maximum_x; ++x) {
+            const float pixel_x=static_cast<float>(x)+0.5F;
+            const float pixel_y=static_cast<float>(y)+0.5F;
+            const float weight0=edge(vertices[1].x,vertices[1].y,
+                vertices[2].x,vertices[2].y,pixel_x,pixel_y)/area;
+            const float weight1=edge(vertices[2].x,vertices[2].y,
+                vertices[0].x,vertices[0].y,pixel_x,pixel_y)/area;
+            const float weight2=1.0F-weight0-weight1;
+            if (weight0<0.0F || weight1<0.0F || weight2<0.0F) continue;
+            const float pixel_depth=weight0*vertices[0].z+
+                weight1*vertices[1].z+weight2*vertices[2].z;
+            const std::size_t pixel=static_cast<std::size_t>(y)*width+x;
+            if (material.depth_test && !(pixel_depth<depth[pixel])) continue;
+            const float reciprocal=1.0F/(weight0*vertices[0].inverse_w+
+                weight1*vertices[1].inverse_w+weight2*vertices[2].inverse_w);
+            const auto interpolate=[&](float RasterVertex::*member) {
+                return (weight0*vertices[0].*member+weight1*vertices[1].*member+
+                        weight2*vertices[2].*member)*reciprocal;
+            };
+            const float u=interpolate(&RasterVertex::u_over_w);
+            const float v=interpolate(&RasterVertex::v_over_w);
+            const std::uint32_t shade=pack_color(
+                interpolate(&RasterVertex::r_over_w),
+                interpolate(&RasterVertex::g_over_w),
+                interpolate(&RasterVertex::b_over_w),
+                interpolate(&RasterVertex::a_over_w));
+            const std::uint32_t output=combine(material,sample(material,u,v),shade);
+            if (material.alpha==AlphaMode::edge_test && (output>>24U)<128U) continue;
+            if (material.depth_test) depth[pixel]=pixel_depth;
+            color[pixel]=output&0x00FFFFFFU;
+        }
+    }
+}
+
 } // namespace
 
 SoftwareRenderer::SoftwareRenderer(int width,int height)
@@ -117,6 +213,19 @@ std::size_t select_model_lod(std::uint8_t lod_count,float distance_squared) noex
     if (lod_count==2U) return distance_squared>90000.0F ? 1U : 0U;
     if (distance_squared>2890000.0F) return 2U;
     return distance_squared>1000000.0F ? 1U : 0U;
+}
+
+std::size_t clipped_near_vertex_count(
+    const std::array<std::array<float,4>,3>& triangle) noexcept {
+    std::array<ClipVertex,3> input{};
+    for (std::size_t index=0U; index<input.size(); ++index) {
+        input[index].x=triangle[index][0];
+        input[index].y=triangle[index][1];
+        input[index].z=triangle[index][2];
+        input[index].w=triangle[index][3];
+    }
+    std::array<ClipVertex,4> output{};
+    return clip_near_plane(input,output);
 }
 
 void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
@@ -140,73 +249,28 @@ void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
                 const auto& mesh=assets.meshes()[part.mesh];
                 const auto& material=assets.materials()[part.material];
                 for (std::size_t triangle=0U; triangle+2U<mesh.indices.size(); triangle+=3U) {
-                    std::array<RasterVertex,3> vertices{};
-                    bool clipped=false;
+                    std::array<ClipVertex,3> input{};
+                    bool finite=true;
                     for (std::size_t corner=0U; corner<3U; ++corner) {
                         const auto& source=mesh.vertices[mesh.indices[triangle+corner]];
                         const auto clip=transform(
                             transform_matrix,source.x,source.y,source.z,1.0F);
-                        if (!std::isfinite(clip[3]) || clip[3]<=0.000001F ||
-                            clip[2]<-clip[3] || clip[2]>clip[3]) {
-                            clipped=true;
+                        if (!std::all_of(clip.begin(),clip.end(),
+                                         [](float value) { return std::isfinite(value); })) {
+                            finite=false;
                             break;
                         }
-                        const float inverse_w=1.0F/clip[3];
-                        vertices[corner]={
-                            (clip[0]*inverse_w*0.5F+0.5F)*width_,
-                            (0.5F-clip[1]*inverse_w*0.5F)*height_,
-                            clip[2]*inverse_w,inverse_w,
-                            source.u*inverse_w,source.v*inverse_w,
-                            source.r*inverse_w,source.g*inverse_w,
-                            source.b*inverse_w,source.a*inverse_w};
+                        input[corner]={clip[0],clip[1],clip[2],clip[3],
+                            source.u,source.v,static_cast<float>(source.r),
+                            static_cast<float>(source.g),static_cast<float>(source.b),
+                            static_cast<float>(source.a)};
                     }
-                    if (clipped) continue;
-                    const float area=edge(vertices[0].x,vertices[0].y,
-                                           vertices[1].x,vertices[1].y,
-                                           vertices[2].x,vertices[2].y);
-                    if (std::abs(area)<=0.000001F ||
-                        (material.cull==CullMode::back && area>0.0F)) continue;
-                    const int minimum_x=std::max(0,static_cast<int>(std::floor(std::min(
-                        {vertices[0].x,vertices[1].x,vertices[2].x}))));
-                    const int maximum_x=std::min(width_-1,static_cast<int>(std::ceil(std::max(
-                        {vertices[0].x,vertices[1].x,vertices[2].x}))));
-                    const int minimum_y=std::max(0,static_cast<int>(std::floor(std::min(
-                        {vertices[0].y,vertices[1].y,vertices[2].y}))));
-                    const int maximum_y=std::min(height_-1,static_cast<int>(std::ceil(std::max(
-                        {vertices[0].y,vertices[1].y,vertices[2].y}))));
-                    for (int y=minimum_y; y<=maximum_y; ++y) {
-                        for (int x=minimum_x; x<=maximum_x; ++x) {
-                            const float pixel_x=static_cast<float>(x)+0.5F;
-                            const float pixel_y=static_cast<float>(y)+0.5F;
-                            const float weight0=edge(vertices[1].x,vertices[1].y,
-                                vertices[2].x,vertices[2].y,pixel_x,pixel_y)/area;
-                            const float weight1=edge(vertices[2].x,vertices[2].y,
-                                vertices[0].x,vertices[0].y,pixel_x,pixel_y)/area;
-                            const float weight2=1.0F-weight0-weight1;
-                            if (weight0<0.0F || weight1<0.0F || weight2<0.0F) continue;
-                            const float depth=weight0*vertices[0].z+
-                                weight1*vertices[1].z+weight2*vertices[2].z;
-                            const std::size_t pixel=static_cast<std::size_t>(y)*width_+x;
-                            if (material.depth_test && !(depth<depth_[pixel])) continue;
-                            const float reciprocal=1.0F/(weight0*vertices[0].inverse_w+
-                                weight1*vertices[1].inverse_w+weight2*vertices[2].inverse_w);
-                            const auto interpolate=[&](float RasterVertex::*member) {
-                                return (weight0*vertices[0].*member+weight1*vertices[1].*member+
-                                        weight2*vertices[2].*member)*reciprocal;
-                            };
-                            const float u=interpolate(&RasterVertex::u_over_w);
-                            const float v=interpolate(&RasterVertex::v_over_w);
-                            const std::uint32_t shade=pack_color(
-                                interpolate(&RasterVertex::r_over_w),
-                                interpolate(&RasterVertex::g_over_w),
-                                interpolate(&RasterVertex::b_over_w),
-                                interpolate(&RasterVertex::a_over_w));
-                            const std::uint32_t output=combine(
-                                material,sample(material,u,v),shade);
-                            if (material.alpha==AlphaMode::edge_test && (output>>24U)<128U) continue;
-                            if (material.depth_test) depth_[pixel]=depth;
-                            color_[pixel]=output&0x00FFFFFFU;
-                        }
+                    if (!finite) continue;
+                    std::array<ClipVertex,4> polygon{};
+                    const std::size_t vertex_count=clip_near_plane(input,polygon);
+                    for (std::size_t fan=1U; fan+1U<vertex_count; ++fan) {
+                        rasterize_triangle(width_,height_,color_,depth_,material,
+                            {polygon[0],polygon[fan],polygon[fan+1U]});
                     }
                 }
             }
