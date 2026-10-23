@@ -6,9 +6,11 @@
 #include "battletanx/campaign_catalog.hpp"
 #include "battletanx/campaign_spawn.hpp"
 #include "battletanx/level.hpp"
+#include "battletanx/model.hpp"
 #include "battletanx/resource.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/sha256.hpp"
+#include "battletanx/unit_kinds.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -28,6 +30,8 @@ using namespace battletanx;
 constexpr std::size_t kLevelRangeInitRom=0x0165E0U;
 constexpr std::uint32_t kLevelRangeVram=0x80125A68U;
 constexpr std::uint32_t kPiBase=0xB0000000U;
+constexpr std::size_t kPickupModelTable=0xB5CE0U;
+constexpr std::size_t kTurretModelTable=0xB5FB0U;
 
 std::map<std::uint32_t,std::uint32_t> decode_level_range_init(const BigEndianView& rom) {
     std::map<std::uint32_t,std::uint32_t> stores;
@@ -76,7 +80,7 @@ int main(int argc,char** argv) {
         const bool post_ok=static_cast<std::uint8_t>(post)==campaign_wave_definitions()[16].saved_mission_id_after_clear;
 
         const auto stores=decode_level_range_init(view);
-        std::size_t stream_ok=0U, nav_ok=0U, range_ok=0U, spawn_ok=0U;
+        std::size_t stream_ok=0U, nav_ok=0U, range_ok=0U, spawn_ok=0U, model_ok=0U;
         const auto roster_bytes=rom.bytes().subspan(
             controller_roster_rom_offset,controller_roster_count*controller_roster_size);
         for (const CampaignWaveDefinition& wave : campaign_wave_definitions()) {
@@ -119,6 +123,36 @@ int main(int argc,char** argv) {
             const auto spawn=roster_valid ? build_campaign_spawn_plan(
                 input,world,navigation ? &*navigation : nullptr,rng,&spawn_error) : std::nullopt;
             if (spawn) ++spawn_ok;
+            const ModelAssets assets=ModelAssets::load(rom,world);
+            const auto slot_present=[&](std::uint32_t slot) {
+                const std::size_t set=assets.set_base()+slot;
+                return set<assets.sets().size() && assets.set(set).lod_count!=0U;
+            };
+            bool models_present=spawn.has_value() && slot_present(0x24U);
+            if (spawn) {
+                for (const PlannedUnit& unit : spawn->units) {
+                    for (const bool damaged : {false,true}) {
+                        const auto models=unit_model_set(static_cast<std::uint8_t>(unit.kind),damaged);
+                        if (!models) { models_present=false; continue; }
+                        for (std::size_t part=0U; part<models->part_count; ++part)
+                            models_present=models_present && slot_present(models->parts[part].slot);
+                        models_present=models_present && slot_present(models->shadow_slot);
+                    }
+                }
+                for (const PickupPlacement& pickup : spawn->pickups) {
+                    if (pickup.kind>=23U) { models_present=false; continue; }
+                    models_present=models_present && slot_present(view.u32(kPickupModelTable+4U*pickup.kind));
+                }
+                for (const OwnedObjectPlacement& object : spawn->owned_objects) {
+                    if (object.sub_kind>=turret_types) { models_present=false; continue; }
+                    models_present=models_present && slot_present(view.u32(kTurretModelTable+4U*object.sub_kind));
+                }
+            }
+            if (wave.game_kind==3 || wave.game_kind==4 || wave.game_kind==6) {
+                for (std::uint32_t team=0U; team<4U; ++team)
+                    models_present=models_present && slot_present(0x5FU-team);
+            }
+            if (models_present) ++model_ok;
             std::cout << "wave " << int{wave.wave_index} << " id " << wave.mission_id << " kind " << wave.game_kind
                       << " items " << world.items.size() << " groups " << world.groups.size()
                       << " bank_group " << (world.bank_group ? static_cast<std::int64_t>(*world.bank_group) : std::int64_t{-1})
@@ -127,6 +161,7 @@ int main(int argc,char** argv) {
                       << ',' << wave.owners[1].unit_kind << ',' << wave.owners[2].unit_kind
                       << ',' << wave.owners[3].unit_kind
                       << " spawn " << (spawn ? "ok" : "fail")
+                      << " models " << (models_present ? "ok" : "fail")
                       << " units " << (spawn ? spawn->units.size() : 0U)
                       << " spawners " << (spawn ? spawn->spawners.size() : 0U)
                       << " pickups " << (spawn ? spawn->pickups.size() : 0U)
@@ -143,12 +178,14 @@ int main(int argc,char** argv) {
                   << "world_range_matches " << range_ok << '/' << campaign_wave_count << '\n'
                   << "world_streams_decoded " << stream_ok << '/' << campaign_wave_count << '\n'
                   << "navigation_decoded " << nav_ok << '/' << campaign_wave_count << '\n'
-                  << "spawn_plans_built " << spawn_ok << '/' << campaign_wave_count << '\n';
+                  << "spawn_plans_built " << spawn_ok << '/' << campaign_wave_count << '\n'
+                  << "runtime_model_sets " << model_ok << '/' << campaign_wave_count << '\n';
         const CampaignCatalogAudit audit=audit_campaign_catalog();
         std::cout << "catalog_issues " << audit.issues.size() << '\n';
         if (word_mismatch || gun_mismatch || briefing_mismatch || !post_ok || !audit.ok()
             || range_ok!=campaign_wave_count || stream_ok!=campaign_wave_count ||
-            nav_ok!=campaign_wave_count || spawn_ok!=campaign_wave_count) failures=1;
+            nav_ok!=campaign_wave_count || spawn_ok!=campaign_wave_count ||
+            model_ok!=campaign_wave_count) failures=1;
         std::cout << (failures ? "FAIL\n" : "OK\n");
         return failures;
     } catch (const std::exception& error) {
