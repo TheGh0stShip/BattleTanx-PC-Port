@@ -107,6 +107,7 @@ class SdlPlatform final : public Platform {
     }
 
     bool pump(std::array<ControllerPad,4>& output) override {
+        close_detached_controllers();
         SDL_Event event{};
         while (SDL_PollEvent(&event)!=0) {
             if (event.type==SDL_QUIT) return false;
@@ -196,6 +197,14 @@ class SdlPlatform final : public Platform {
 
     void open_controller(int device_index) {
         if (!SDL_IsGameController(device_index)) return;
+        const SDL_JoystickID instance=SDL_JoystickGetDeviceInstanceID(device_index);
+        if (instance<0) return;
+        const auto already_open=std::find_if(controllers_.begin(),controllers_.end(),
+                                             [instance](SDL_GameController* controller) {
+            if (controller==nullptr) return false;
+            return SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))==instance;
+        });
+        if (already_open!=controllers_.end()) return;
         const auto free_port=std::find(controllers_.begin(),controllers_.end(),nullptr);
         if (free_port==controllers_.end()) return;
         SDL_GameController* controller=SDL_GameControllerOpen(device_index);
@@ -214,6 +223,15 @@ class SdlPlatform final : public Platform {
         }
     }
 
+    void close_detached_controllers() {
+        for (auto*& controller:controllers_) {
+            if (controller!=nullptr && !SDL_GameControllerGetAttached(controller)) {
+                SDL_GameControllerClose(controller);
+                controller=nullptr;
+            }
+        }
+    }
+
     static ControllerPad read_controller(SDL_GameController* controller) {
         HostControllerState state{};
         state.left_x=SDL_GameControllerGetAxis(controller,SDL_CONTROLLER_AXIS_LEFTX);
@@ -221,12 +239,14 @@ class SdlPlatform final : public Platform {
         state.right_x=SDL_GameControllerGetAxis(controller,SDL_CONTROLLER_AXIS_RIGHTX);
         state.right_y=SDL_GameControllerGetAxis(controller,SDL_CONTROLLER_AXIS_RIGHTY);
         state.left_trigger=SDL_GameControllerGetAxis(controller,SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+        state.right_trigger=SDL_GameControllerGetAxis(controller,SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
         const auto copy_button=[&](HostButton destination,SDL_GameControllerButton source) {
             state.buttons[static_cast<std::size_t>(destination)]=
                 SDL_GameControllerGetButton(controller,source)!=0;
         };
         copy_button(HostButton::face_south,SDL_CONTROLLER_BUTTON_A);
         copy_button(HostButton::face_west,SDL_CONTROLLER_BUTTON_X);
+        copy_button(HostButton::face_east,SDL_CONTROLLER_BUTTON_B);
         copy_button(HostButton::start,SDL_CONTROLLER_BUTTON_START);
         copy_button(HostButton::dpad_up,SDL_CONTROLLER_BUTTON_DPAD_UP);
         copy_button(HostButton::dpad_down,SDL_CONTROLLER_BUTTON_DPAD_DOWN);

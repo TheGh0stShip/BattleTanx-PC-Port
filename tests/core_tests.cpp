@@ -638,6 +638,31 @@ int main() {
         const auto deadzone=battletanx::map_host_controller(state);
         CHECK(deadzone.stick_x==0 && deadzone.stick_y==0);
         CHECK(deadzone.buttons==0U);
+
+        state={};
+        state.left_x=6000;
+        state.left_y=-6000;
+        state.left_trigger=16000;
+        state.right_trigger=16000;
+        const auto boundary=battletanx::map_host_controller(state);
+        CHECK(boundary.stick_x==0 && boundary.stick_y==0);
+        CHECK(boundary.buttons==0U);
+
+        state.left_x=6001;
+        state.left_y=-6001;
+        state.right_trigger=16001;
+        state.buttons[static_cast<std::size_t>(battletanx::HostButton::face_east)]=true;
+        const auto alternate=battletanx::map_host_controller(state);
+        CHECK(alternate.stick_x>0 && alternate.stick_y>0);
+        CHECK(alternate.buttons==(0x4000U|0x2000U));
+
+        state={};
+        state.left_x=std::numeric_limits<std::int16_t>::min();
+        state.left_y=std::numeric_limits<std::int16_t>::max();
+        state.left_trigger=16001;
+        const auto extremes=battletanx::map_host_controller(state);
+        CHECK(extremes.stick_x==-127 && extremes.stick_y==-127);
+        CHECK(extremes.buttons==0x2000U);
     }
 
     {

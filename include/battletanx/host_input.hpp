@@ -10,6 +10,7 @@ namespace battletanx {
 enum class HostButton : std::size_t {
     face_south,
     face_west,
+    face_east,
     start,
     dpad_up,
     dpad_down,
@@ -26,6 +27,7 @@ struct HostControllerState {
     std::int16_t right_x{};
     std::int16_t right_y{};
     std::int16_t left_trigger{};
+    std::int16_t right_trigger{};
     std::array<bool,static_cast<std::size_t>(HostButton::count)> buttons{};
 };
 
