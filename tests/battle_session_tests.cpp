@@ -165,6 +165,32 @@ RUNTIME_TEST(bike_fires_alternating_machine_guns_in_session) {
     return true;
 }
 
+RUNTIME_TEST(player_special_input_fires_selected_pickup_weapon) {
+    BattleSession session(config_with_seed(0x4411U),angles(),open_ground_unit_motion(angles()));
+    session.add_owner(0U,OwnerSetup{0U,false,1U,0,false});
+    session.add_owner(1U,OwnerSetup{1U,true,1U,0,false});
+    const EntityId player=*session.spawn_unit(
+        UnitSpawn{retail::UnitKind::tank,0U,0.0F,0.0F,0U,0U});
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,1U,0.0F,5000.0F,0U,0U});
+    UnitRecord* unit=session.units().get(player);
+    REQUIRE(unit!=nullptr);
+    unit->secondary_weapon.kind=4U;
+    unit->ammo[4]=1;
+    session.mission().force_state(MatchState::live,0);
+    SessionInput input;
+    input.drive.special=true;
+    input.drive.special_pressed=true;
+    session.step(input);
+    std::size_t shells=0U;
+    session.projectiles().for_each([&](EntityId,const WeaponProjectile& projectile) {
+        if (projectile.weapon==4U) ++shells;
+    });
+    REQUIRE(shells==3U);
+    REQUIRE(unit->ammo[4]==0);
+    REQUIRE(unit->secondary_weapon.kind==0U);
+    return true;
+}
+
 RUNTIME_TEST(campaign_spawner_fills_first_free_squad_slot) {
     BattleSession session(config_with_seed(0x1234U),angles(),open_ground_unit_motion(angles()));
     session.add_owner(0U,OwnerSetup{0U,false,1U,0,false});

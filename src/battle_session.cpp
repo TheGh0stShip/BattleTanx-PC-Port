@@ -585,6 +585,10 @@ void BattleSession::update_units(const SessionInput& input) {
             (void)fire_weapon(weapons,id,unit->primary_weapon,
                               FireRequest{true,drive.fire_pressed});
         }
+        if (drive.special && unit->secondary_weapon.kind!=0U) {
+            (void)fire_weapon(weapons,id,unit->secondary_weapon,
+                              FireRequest{true,drive.special_pressed});
+        }
     }
 }
 
