@@ -135,6 +135,33 @@ add_runtime_test(spawner_tests)
 add_runtime_test(pickup_tests)
 add_runtime_test(hud_tests)
 
+target_sources(battletanx_core PRIVATE
+    src/campaign_ai.cpp
+    src/campaign_catalog.cpp
+    src/campaign_spawn.cpp
+    src/navigation_route.cpp
+    src/objective_runtime.cpp
+    src/pickup_effects.cpp
+    src/unit_kinds.cpp
+    src/weapon_catalog.cpp
+    src/weapon_runtime.cpp
+)
+add_runtime_test(campaign_catalog_tests)
+add_runtime_test(campaign_spawn_tests)
+add_runtime_test(objective_tests)
+add_runtime_test(navigation_route_tests)
+add_runtime_test(campaign_ai_tests)
+add_runtime_test(weapon_tests)
+add_runtime_test(pickup_effects_tests)
+add_runtime_test(unit_kinds_tests)
+
+add_executable(battletanx_campaign_audit tools/campaign_audit.cpp)
+target_link_libraries(battletanx_campaign_audit PRIVATE battletanx_core)
+target_compile_options(battletanx_campaign_audit PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive->
+)
+
 # Keep binary distributions self-contained and free of retail game data. SDL is
 # linked statically above, so the installed runtime consists of the native host
 # executable and its build/run documentation.

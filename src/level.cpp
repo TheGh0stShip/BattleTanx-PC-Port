@@ -275,8 +275,13 @@ NavigationLevel parse_navigation_level(std::span<const std::uint8_t> bytes) {
     return result;
 }
 
+std::vector<std::uint8_t> load_world_stream(const Rom& rom,
+                                            const LevelStreamDescriptor& descriptor) {
+    return decode(rom,descriptor.world);
+}
+
 WorldLevel load_world_level(const Rom& rom,const LevelStreamDescriptor& descriptor) {
-    return parse_world_level(decode(rom,descriptor.world));
+    return parse_world_level(load_world_stream(rom,descriptor));
 }
 
 NavigationLevel load_navigation_level(const Rom& rom,const LevelStreamDescriptor& descriptor) {

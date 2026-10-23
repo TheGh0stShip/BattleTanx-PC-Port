@@ -3,7 +3,9 @@
 #include "battletanx/battle_session.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/camera.hpp"
+#include "battletanx/campaign_catalog.hpp"
 #include "battletanx/campaign_record.hpp"
+#include "battletanx/campaign_spawn.hpp"
 #include "battletanx/controller_pak.hpp"
 #include "battletanx/fixed_tick.hpp"
 #include "battletanx/hud.hpp"
@@ -57,6 +59,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::MusicTrack& music,
                              const battletanx::HudAssets& hud_assets,
                              const std::array<std::uint32_t,pickup_model_kind_count>& pickup_models,
+                             const battletanx::CampaignWaveDefinition& wave,
+                             std::optional<battletanx::TeamSpawnTable> team_spawns,
                              battletanx::CampaignRecord campaign,
                              const battletanx::PcSettings& settings,
                              const std::filesystem::path& pak_path) {
@@ -70,39 +74,73 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     std::array<battletanx::ControllerPad,4> current{};
     constexpr std::uint32_t ticks_per_second=30U;
     const auto clock_start=std::chrono::steady_clock::now();
-    const auto player_start=battletanx::spawn_player_tank(world,navigation);
     const auto terrain=battletanx::TerrainSurface::build(world,assets,angles);
-    battletanx::SpawnContext spawn_context;
-    spawn_context.game_mode=3;
-    spawn_context.bank_group=world.bank_group;
-    spawn_context.active_player_count=4;
-    const auto spawn_plan=battletanx::interpret_level_spawns(world,spawn_context);
-    std::cout << "Recovered level population: " << spawn_plan.units.size()
-              << " unit placements, " << spawn_plan.spawners.size()
-              << " spawners, " << spawn_plan.pickups.size() << " pickups\n";
+    battletanx::CampaignSpawnInput spawn_input;
+    spawn_input.game_kind=wave.game_kind;
+    spawn_input.active_player_count=1;
+    spawn_input.team_spawns=std::move(team_spawns);
+    for (std::size_t owner=0U; owner<battletanx::spawn_owner_count; ++owner) {
+        auto& setup=spawn_input.owners[owner];
+        setup.present=owner<static_cast<std::size_t>(wave.owner_count);
+        setup.computer=owner!=0U;
+        setup.team=static_cast<std::uint8_t>(wave.owners[owner].team);
+        setup.difficulty=static_cast<std::uint8_t>(campaign.difficulty);
+        const auto kind=static_cast<std::uint8_t>(owner==0U ? campaign.unit_type
+                                                            : wave.owners[owner].unit_kind);
+        setup.lineup.fill(kind);
+        setup.lineup_count=static_cast<std::uint8_t>(setup.lineup.size());
+        setup.lives=std::max(1,wave.owners[owner].reserve);
+    }
+    constexpr std::uint32_t session_seed=0x42545831U;
+    battletanx::RetailRandom spawn_random{session_seed};
+    battletanx::SpawnPlanError spawn_error{};
+    auto spawn_plan=battletanx::build_campaign_spawn_plan(
+        spawn_input,world,&navigation,spawn_random,&spawn_error);
+    if (!spawn_plan) {
+        throw std::runtime_error("campaign spawn plan failed: "+
+                                 std::to_string(static_cast<unsigned>(spawn_error)));
+    }
+    std::cout << "Recovered wave " << static_cast<unsigned>(wave.wave_index)
+              << " population: " << spawn_plan->units.size() << " units, "
+              << spawn_plan->spawners.size() << " spawners, "
+              << spawn_plan->pickups.size() << " pickups\n";
     battletanx::SessionConfig session_config;
-    session_config.rng_seed=0x42545831U;
+    session_config.rng_seed=spawn_random.seed();
+    session_config.mission.game_kind=static_cast<std::uint32_t>(wave.game_kind);
+    session_config.mission.countdown_unit=wave.countdown_unit;
     session_config.combat.unlimited_ammo=campaign.unlimited_ammo.enabled();
     battletanx::BattleSession session(
         session_config,angles,battletanx::level_unit_motion(world,navigation,angles),
         battletanx::level_world_collision(world,navigation,angles));
-    session.add_owner(0U,battletanx::OwnerSetup{0U,false,1U,3,false});
-    session.add_owner(1U,battletanx::OwnerSetup{1U,true,5U,0,false});
-    const auto player_id=session.spawn_unit({
-        battletanx::retail::UnitKind::tank,0U,player_start.x,player_start.z,
-        battletanx::degrees_to_retail_angle(player_start.heading_degrees),0U});
-    if (!player_id) throw std::runtime_error("failed to spawn the player tank");
-    session.set_respawn_point(0U,{player_start.x,player_start.z,
-        battletanx::degrees_to_retail_angle(player_start.heading_degrees)});
-    for (const auto& spawn:spawn_plan.units) {
-        const auto enemy_id=session.spawn_unit({
-            battletanx::retail::UnitKind::tank,spawn.owner,spawn.x,spawn.z,
-            spawn.heading,0U});
-        if (!enemy_id) throw std::runtime_error("failed to spawn a placed enemy tank");
+    for (std::size_t owner=0U; owner<battletanx::spawn_owner_count; ++owner) {
+        if (!spawn_plan->owners[owner].present) continue;
+        const auto count=static_cast<std::uint8_t>(std::count_if(
+            spawn_plan->units.begin(),spawn_plan->units.end(),
+            [owner](const battletanx::PlannedUnit& unit) { return unit.owner==owner; }));
+        const float scale=spawn_plan->owners[owner].human_scale.value_or(
+            battletanx::retail::human_scale_default);
+        session.add_owner(static_cast<std::uint8_t>(owner),battletanx::OwnerSetup{
+            spawn_plan->owners[owner].team,spawn_input.owners[owner].computer,
+            std::max<std::uint8_t>(count,1U),
+            static_cast<std::int16_t>(std::max(spawn_plan->owners[owner].reserve,0)),false,
+            scale,scale});
+        if (!spawn_plan->respawn_points[owner].points.empty()) {
+            const auto& point=spawn_plan->respawn_points[owner].points.front();
+            session.set_respawn_point(static_cast<std::uint8_t>(owner),
+                                      {point.x,point.z,point.heading});
+        }
     }
+    std::optional<battletanx::EntityId> player_id;
+    for (const auto& planned:spawn_plan->units) {
+        const auto id=session.spawn_unit({planned.kind,planned.owner,planned.x,planned.z,
+                                          planned.heading,planned.flags});
+        if (!id) throw std::runtime_error("failed to spawn a planned campaign unit");
+        if (planned.unit_id==spawn_plan->player.unit_id) player_id=id;
+    }
+    if (!player_id) throw std::runtime_error("failed to spawn the player tank");
     battletanx::PickupWeights pickup_weights;
     std::uint16_t pickup_slot=0U;
-    for (const auto& placement:spawn_plan.pickups) {
+    for (const auto& placement:spawn_plan->pickups) {
         battletanx::PickupRecord pickup;
         pickup.id={pickup_slot++,1U};
         pickup.kind=placement.kind;
@@ -111,8 +149,9 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         if (session.add_pickup(pickup)) pickup_weights.register_permanent(pickup.kind);
     }
     session.set_pickup_weights(pickup_weights);
-    auto terrain_sample=terrain.sample(player_start.x,player_start.z);
-    auto tank=player_start;
+    auto terrain_sample=terrain.sample(spawn_plan->player.x,spawn_plan->player.z);
+    battletanx::PlayerTank tank;
+    battletanx::sync_player_tank_from_unit(tank,*session.units().get(*player_id));
     std::cout << "Built native terrain surface: " << terrain.triangle_count()
               << " triangles, player height "
               << (terrain_sample ? terrain_sample->height : 0.0F) << '\n';
@@ -141,7 +180,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                     platform->rumble(0U,1.0F,500U);
                 if (event.kind==battletanx::GameplayEventKind::mission_succeeded && !progress_saved) {
                     battletanx::CampaignWaveClear clear;
-                    clear.mission_id=static_cast<std::uint8_t>(campaign.mission_id+1U);
+                    const auto* next=battletanx::next_campaign_wave(wave);
+                    clear.mission_id=next!=nullptr ? static_cast<std::uint8_t>(next->mission_id) : 0U;
                     clear.carry=session.owners()[0].score;
                     clear.unit_type=campaign.unit_type;
                     clear.bonus=campaign.bonus;
@@ -336,6 +376,8 @@ int main(int argc, char** argv) {
         if (!pak) throw std::runtime_error("failed to mount virtual Controller Pak");
         auto campaign=battletanx::parse_campaign_record(*pak);
         if (!campaign) throw std::runtime_error("Controller Pak campaign record is invalid");
+        const auto* wave=battletanx::campaign_wave_for_record(*campaign);
+        if (wave==nullptr) throw std::runtime_error("Controller Pak campaign is complete or has an unknown mission");
         std::cout << "Mounted verified Controller Pak image at "
                   << pak_path.string() << '\n';
         const auto rom=battletanx::Rom::load_verified(rom_path);
@@ -376,9 +418,11 @@ int main(int argc, char** argv) {
         }
         std::cout << "Loaded retail 16-bit angle table: "
                   << battletanx::AngleTable::value_count << " samples\n";
-        const auto hud_assets=battletanx::load_hud_assets(rom);
-        std::optional<battletanx::WorldLevel> preview_world;
-        std::optional<battletanx::NavigationLevel> preview_navigation;
+        auto hud_assets=battletanx::load_hud_assets(rom);
+        if (wave->world_stream!=1U) hud_assets.level_map.reset();
+        std::optional<battletanx::WorldLevel> active_world;
+        std::optional<battletanx::NavigationLevel> active_navigation;
+        std::optional<std::vector<std::uint8_t>> active_world_stream;
         std::size_t world_groups=0U;
         std::size_t world_items=0U;
         std::size_t navigation_triangles=0U;
@@ -393,11 +437,14 @@ int main(int argc, char** argv) {
             model_audit.triangles+=level_audit.triangles;
             world_groups+=world.groups.size();
             world_items+=world.items.size();
-            if (descriptor.index==1) preview_world=std::move(world);
+            if (descriptor.index==wave->world_stream) {
+                active_world=std::move(world);
+                active_world_stream=battletanx::load_world_stream(rom,descriptor);
+            }
             if (descriptor.navigation) {
                 auto navigation=battletanx::load_navigation_level(rom,descriptor);
                 navigation_triangles+=navigation.triangles.size();
-                if (descriptor.index==1) preview_navigation=std::move(navigation);
+                if (descriptor.index==wave->world_stream) active_navigation=std::move(navigation);
             }
         }
         std::cout << "Validated 22 world streams and 18 navigation streams: "
@@ -406,20 +453,24 @@ int main(int argc, char** argv) {
         std::cout << "Validated " << model_audit.geometry_blobs
                   << " level-local model geometry references: " << model_audit.vertices
                   << " vertices, " << model_audit.triangles << " triangles\n";
-        const auto preview_assets=battletanx::ModelAssets::load(rom,*preview_world);
+        if (!active_world || !active_navigation || !active_world_stream) {
+            throw std::runtime_error("campaign wave level streams are unavailable");
+        }
+        const auto active_assets=battletanx::ModelAssets::load(rom,*active_world);
         const auto sounds=battletanx::load_sound_effect_bank(rom);
         std::optional<battletanx::MusicTrack> music;
-        if (show_window) music=battletanx::render_music_sequence(rom,5U);
+        if (show_window) music=battletanx::render_music_sequence(
+            rom,static_cast<std::uint32_t>(wave->mission_id));
         const auto pickup_models=load_pickup_model_slots(rom);
         for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x52U}) {
-            if (preview_assets.set_base()+slot>=preview_assets.sets().size() ||
-                preview_assets.set(preview_assets.set_base()+slot).lod_count==0U) {
-                throw std::runtime_error("level-one native model slot is absent");
+            if (active_assets.set_base()+slot>=active_assets.sets().size() ||
+                active_assets.set(active_assets.set_base()+slot).lod_count==0U) {
+                throw std::runtime_error("campaign level native model slot is absent");
             }
         }
-        std::cout << "Decoded level-one native model cache: "
-                  << preview_assets.meshes().size() << " meshes, "
-                  << preview_assets.materials().size() << " materials\n";
+        std::cout << "Decoded campaign level " << wave->mission_id << " native model cache: "
+                  << active_assets.meshes().size() << " meshes, "
+                  << active_assets.materials().size() << " materials\n";
         std::cout << "Decoded " << sounds.sounds.size()
                   << " native sound effects at " << sounds.sample_rate << " Hz\n";
         if (music) {
@@ -430,8 +481,10 @@ int main(int argc, char** argv) {
         std::cout << "Native gameplay runtime is ready.\n";
         if (show_window) {
             run_platform_diagnostic(
-                *preview_world,*preview_navigation,angles,bindings,preview_assets,
-                sounds,*music,hud_assets,pickup_models,*campaign,settings,pak_path);
+                *active_world,*active_navigation,angles,bindings,active_assets,
+                sounds,*music,hud_assets,pickup_models,*wave,
+                battletanx::parse_team_spawn_table(*active_world_stream),
+                *campaign,settings,pak_path);
         }
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';

@@ -110,6 +110,8 @@ struct NavigationTrace {
 std::span<const LevelStreamDescriptor> level_stream_descriptors() noexcept;
 WorldLevel parse_world_level(std::span<const std::uint8_t> bytes);
 NavigationLevel parse_navigation_level(std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> load_world_stream(const Rom& rom,
+                                            const LevelStreamDescriptor& descriptor);
 WorldLevel load_world_level(const Rom& rom,const LevelStreamDescriptor& descriptor);
 NavigationLevel load_navigation_level(const Rom& rom,const LevelStreamDescriptor& descriptor);
 NavigationVertex navigation_triangle_centroid(const NavigationLevel& level,
