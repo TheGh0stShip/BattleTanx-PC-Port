@@ -49,9 +49,9 @@ does not execute cartridge code.
   248-edge termination bound.
 - The gameplay bring-up owns native player-tank and projectile state. It uses
   the recovered controller, angle, planar-motion, and navigation rules without
-  reproducing cartridge pointers or executing original machine code. Current
-  vehicle constants are isolated provisional tuning until their retail tables
-  are decoded.
+  reproducing cartridge pointers or executing original machine code. The
+  initial M1A1 slice uses its recovered retail drive constants; other vehicle
+  tables remain outside this slice.
 - Linux x86-64 is normally LP64, while Windows x64 is LLP64. Neither host data
   model implicitly reproduces the N64 o32 ABI.
 

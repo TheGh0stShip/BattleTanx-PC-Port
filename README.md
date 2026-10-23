@@ -52,8 +52,10 @@ target, boundary, blocked-cell, and retail 248-step limit outcomes.
 The portable core also contains deterministic recovered controller-state and
 planar-motion behavior covered by host tests. The first native gameplay slice
 adds a player-tank state, navigation-constrained movement, and a single
-bounded projectile. Vehicle tuning and the temporary top-down presentation
-remain bring-up code rather than a claim of complete retail gameplay.
+bounded projectile. The current M1A1 drive slice uses its recovered retail
+turn, acceleration, grip, and drag constants. The temporary top-down
+presentation remains bring-up code rather than a claim of complete retail
+gameplay.
 The original interpolated 16-bit angle behavior reads its 257-sample sine
 table directly from the verified ROM rather than embedding retail data.
 Recovered rotated-bound geometry uses the same angle path and preserves the

@@ -75,8 +75,9 @@ void update_player_tank(PlayerTank& tank,const PlayerInput& input,
                         const NavigationLevel& navigation,const AngleTable& angles) {
     constexpr float frame_rate_scale=0.15F;
     constexpr float turn_acceleration=0.18F;
-    constexpr float drive_acceleration=0.055F;
-    constexpr float drag=0.88F;
+    constexpr float acceleration_scale=1.0F/100.0F;
+    constexpr float grip=300.0F;
+    constexpr float drag=250.0F;
     const float steering=std::clamp(static_cast<float>(input.stick_x),-80.0F,80.0F);
     const float throttle=std::clamp(static_cast<float>(input.stick_y),-80.0F,80.0F);
     const float turn=steering*turn_acceleration*frame_rate_scale;
@@ -84,19 +85,29 @@ void update_player_tank(PlayerTank& tank,const PlayerInput& input,
     tank.turret_degrees=wrap_degrees(tank.turret_degrees-turn);
 
     const auto angle=degrees_to_angle(tank.heading_degrees);
-    tank.velocity_x=(tank.velocity_x+angles.sine(angle)*throttle*drive_acceleration)*drag;
-    tank.velocity_z=(tank.velocity_z+angles.cosine(angle)*throttle*drive_acceleration)*drag;
+    PlanarMotion motion{};
+    motion.acceleration_scale=acceleration_scale;
+    motion.x=tank.x;
+    motion.z=tank.z;
+    motion.velocity_x=tank.velocity_x;
+    motion.velocity_z=tank.velocity_z;
+    motion.heading_degrees=tank.heading_degrees;
+    motion.acceleration_x=grip*throttle*angles.sine(angle)-tank.velocity_x*drag;
+    motion.acceleration_z=grip*throttle*angles.cosine(angle)-tank.velocity_z*drag;
+    advance_planar_motion(motion,frame_rate_scale);
     const NavigationVertex from{tank.x,tank.z};
-    const NavigationVertex candidate{tank.x+tank.velocity_x,tank.z+tank.velocity_z};
+    const NavigationVertex candidate{motion.x,motion.z};
     const auto trace=trace_navigation_segment(
         navigation,tank.navigation_triangle,from,candidate);
     if (trace.stop==NavigationTraceStop::target) {
         tank.x=candidate.x;
         tank.z=candidate.z;
+        tank.velocity_x=motion.velocity_x;
+        tank.velocity_z=motion.velocity_z;
         tank.navigation_triangle=trace.triangle;
     } else {
-        tank.velocity_x*=-0.3F;
-        tank.velocity_z*=-0.3F;
+        tank.velocity_x=motion.velocity_x*-0.3F;
+        tank.velocity_z=motion.velocity_z*-0.3F;
     }
 }
 
