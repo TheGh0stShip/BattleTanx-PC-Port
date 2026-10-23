@@ -209,8 +209,8 @@ public:
     std::optional<spawner_runtime::SpawnerCreateError> add_spawner(const SpawnerDefinition& definition,
                                                                    std::optional<std::int32_t> linked_serial);
 
-    // Weapon 12 / 13 fire path. BattleSession fires only shells, so the caller
-    // invokes this when a unit selects a deployable weapon (request R3).
+    // Direct placement helper retained for tests and scripted callers. Normal
+    // player/computer weapon input is routed by tick() through WeaponContext.
     deployables::DeployResult fire_deployable(BattleSession& session,EntityId unit,std::uint8_t weapon,
                                               bool powered);
     // Routes on_self_destruct; the carried-queen drop follows from the

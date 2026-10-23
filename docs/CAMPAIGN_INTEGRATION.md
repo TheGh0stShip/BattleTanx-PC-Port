@@ -282,11 +282,11 @@ while (game_tick<target_tick) {
 phase C; main must read them **after** `tick` and must never call
 `session.clear_events()` directly (OR-17 would make this robust).
 
-Deployables: the session fires only cannon shells (OR-14). Until then, call
-`bridge.fire_deployable(session,player_id,weapon,powered)` from the host when
-the player's selected weapon is 12 or 13 and fire was pressed, and suppress the
-shell path for that press. Computer-controlled units cannot use deployables
-before OR-14.
+Deployables: `Bridge::tick` supplies its deployables context to `BattleSession`,
+so player and computer special-weapon input reaches weapons 12 and 13 through
+the same cooldown, ammunition, event and sound bookkeeping as other weapons.
+`bridge.fire_deployable(...)` remains a direct helper for scripted placement and
+focused tests.
 
 Known gaps (fidelity, game stays playable): turret shots are instant hits
 (OR-13), placed-object score awards are dropped (OR-16), shells ignore placed
@@ -410,7 +410,7 @@ carry/bonus).
 | Stage 2 queen/marker data | level-reader adapter (not an owner request) |
 | Stage 3 bridge tick + level objects | PUBLIC; fidelity OR-12, OR-13, OR-15, OR-16, OR-18, OR-22, OR-23, OR-24 |
 | Stage 3 event cursor | works today; OR-17 for robustness |
-| Stage 3 deployables from units | player via host call (PUBLIC); computer units need OR-14 |
+| Stage 3 deployables from units | wired through `Bridge::tick` for player and computer input |
 | Stage 4 apply computer commands | **OR-27 (NEW, not in ledger)**; OR-1..OR-4 fidelity |
 | Stage 5 effects | PUBLIC; OR-19 for exact mapping |
 | Stage 5 music | PUBLIC |

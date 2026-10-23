@@ -172,6 +172,29 @@ RUNTIME_TEST(bridge_mine_contact_damages_unit) {
     return true;
 }
 
+RUNTIME_TEST(bridge_routes_special_input_through_deployable_weapon_bookkeeping) {
+    Field field;
+    cb::Bridge bridge(cb::BridgeConfig{},angles());
+    UnitRecord* player=field.session.units().get(field.player);
+    REQUIRE(player!=nullptr);
+    player->secondary_weapon.kind=12U;
+    player->ammo[12]=2;
+    field.session.mission().force_state(MatchState::live,0);
+
+    SessionInput input=idle(0);
+    input.drive.special=true;
+    input.drive.special_pressed=true;
+    static_cast<void>(bridge.tick(field.session,input));
+
+    REQUIRE(bridge.deployable_state().mines.size()==1U);
+    REQUIRE(player->ammo[12]==1);
+    REQUIRE(player->secondary_weapon.last_fire_tick==0);
+    REQUIRE(player->secondary_weapon.kind==12U);
+    REQUIRE(!field.session.gameplay_events().empty());
+    REQUIRE(field.session.gameplay_events().back().kind==GameplayEventKind::weapon_fired);
+    return true;
+}
+
 RUNTIME_TEST(bridge_consumes_session_events_into_effects) {
     Field field;
     cb::Bridge bridge(cb::BridgeConfig{},angles());

@@ -134,7 +134,9 @@ public:
     // 6. match state, squad liveness and respawn scheduling
     // 7. due respawns are spawned
     // 8. the game tick advances unless the match is paused
-    void step(const SessionInput& input);
+    // A campaign bridge may supply the recovered mine/gun-buddy world for this
+    // tick. Standalone sessions leave it null, making weapons 12/13 unsupported.
+    void step(const SessionInput& input,deployables::DeployablesContext* deployables=nullptr);
 
     [[nodiscard]] std::span<const GameplayEvent> gameplay_events() const noexcept { return events_.events(); }
     [[nodiscard]] std::span<const SoundEvent> sound_events() const noexcept { return sounds_.events(); }
@@ -167,7 +169,7 @@ public:
 
 private:
     CombatContext combat_context();
-    void update_units(const SessionInput& input);
+    void update_units(const SessionInput& input,deployables::DeployablesContext* deployables);
     void release_destroyed_units();
     void spawn_due_respawns();
     void update_pickup_state();

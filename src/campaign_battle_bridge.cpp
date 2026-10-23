@@ -702,7 +702,13 @@ TickReport Bridge::tick(BattleSession& session,const SessionInput& input) {
         pre_step_ids_[slot]=unit!=nullptr ? id : no_entity;
         pre_step_kinds_[slot]=unit!=nullptr ? static_cast<std::uint8_t>(unit->kind) : std::uint8_t{0U};
     }
-    session.step(input);
+    // The context lives through session.step so fire_weapon can apply the same
+    // cooldown, ammo, sound and event bookkeeping as every other weapon.
+    const deployables::DeployablesWorld weapon_world=deployables_world(session,&report);
+    deployables::DeployablesContext weapon_deployables{
+        deployables_,deployable_events_,session.rng(),weapon_world,session.tick()};
+    session.step(input,&weapon_deployables);
+    reset_squad_context();
     consume_session_events(session,clock,game_tick_u16,report);
     ++ticks_;
     return report;

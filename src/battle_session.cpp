@@ -575,7 +575,7 @@ void BattleSession::release_destroyed_units() {
     });
 }
 
-void BattleSession::update_units(const SessionInput& input) {
+void BattleSession::update_units(const SessionInput& input,deployables::DeployablesContext* deployables) {
     std::array<CampaignAiCommand,unit_capacity> campaign_commands{};
     std::array<RouteRequest,unit_capacity> route_requests{};
     CampaignAiFrame frame;
@@ -592,6 +592,7 @@ void BattleSession::update_units(const SessionInput& input) {
     CombatContext combat=combat_context();
     ProjectileContext projectiles{combat,shells_,world_,angles_};
     WeaponContext weapons{projectiles,weapon_state_,effects_,rng_};
+    weapons.deployables=deployables;
     for (std::size_t slot=0U; slot<unit_capacity; ++slot) {
         const EntityId id=units_.slot_id(slot);
         UnitRecord* unit=units_.get(id);
@@ -693,7 +694,7 @@ void BattleSession::update_objective() {
     mission_.apply_external_objective(result.next_state,owner_results,tick_,events_);
 }
 
-void BattleSession::step(const SessionInput& input) {
+void BattleSession::step(const SessionInput& input,deployables::DeployablesContext* deployables) {
     if (mission_.simulation_running() && mission_.state()!=MatchState::paused) {
         release_destroyed_units();
         CombatContext combat=combat_context();
@@ -703,7 +704,7 @@ void BattleSession::step(const SessionInput& input) {
         projectiles.hooks=&hooks;
         WeaponContext weapons{projectiles,weapon_state_,effects_,rng_};
         update_weapon_projectiles(weapons);
-        update_units(input);
+        update_units(input,deployables);
         update_turrets();
         update_spawners();
         update_pickup_state();
