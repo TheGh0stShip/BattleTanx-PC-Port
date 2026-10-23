@@ -63,7 +63,7 @@ std::array<std::uint32_t,pickup_model_kind_count> load_pickup_model_slots(
     return slots;
 }
 
-enum class WaveRunResult { quit, advance };
+enum class WaveRunResult { quit, retry, advance };
 
 WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::NavigationLevel& navigation,
@@ -217,6 +217,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
         session_input.drive=input;
         session_input.start_pressed=(pad.pressed&0x1000U)!=0U;
         session_input.advance=(pad.pressed&(0x8000U|0x1000U))!=0U;
+        const bool advance_requested=session_input.advance;
         previous=current;
         const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now()-clock_start).count();
@@ -271,6 +272,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             session_input.drive.fire_pressed=false;
             session_input.drive.special_pressed=false;
             session_input.start_pressed=false;
+            session_input.advance=false;
         }
         const auto active_player=session.owner_unit(0U);
         if (active_player) {
@@ -424,8 +426,8 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             verified_native_frame=true;
         }
         platform->present(renderer.pixels(),battletanx::native_width,battletanx::native_height);
-        if (progress_saved && session.mission().state()==battletanx::MatchState::round_over) {
-            return WaveRunResult::advance;
+        if (advance_requested && session.mission().state()==battletanx::MatchState::round_over) {
+            return progress_saved ? WaveRunResult::advance : WaveRunResult::retry;
         }
         const auto next_tick_nanoseconds=static_cast<std::int64_t>(
             ((game_tick+1U)*UINT64_C(1000000000)+ticks_per_second-1U)/ticks_per_second);
@@ -587,6 +589,11 @@ int main(int argc, char** argv) {
                     battletanx::parse_team_spawn_table(*active_world_stream),
                     *campaign,settings,pak_path);
             if (result==WaveRunResult::quit) break;
+            if (result==WaveRunResult::retry) {
+                std::cout << "Restarting campaign wave "
+                          << static_cast<unsigned>(wave->wave_index) << '\n';
+                continue;
+            }
             pak=battletanx::load_controller_pak_record(pak_path);
             if (!pak) throw std::runtime_error("failed to reload the Controller Pak after wave clear");
             campaign=battletanx::parse_campaign_record(*pak);
