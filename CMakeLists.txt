@@ -20,8 +20,10 @@ add_library(battletanx_core
     src/material.cpp
     src/model.cpp
     src/resource.cpp
+    src/render_math.cpp
     src/rom.cpp
     src/sha256.cpp
+    src/software_renderer.cpp
     src/texture.cpp
 )
 target_include_directories(battletanx_core PUBLIC include)

@@ -135,6 +135,7 @@ NativeMaterial decode_material_blob(std::span<const std::uint8_t> blob,
             break;
         case 0xB9U:
             material.raw_render_mode=word1;
+            material.depth_test=true;
             if (word1==0x552230U) material.alpha=AlphaMode::opaque;
             else if (word1==0x553078U) material.alpha=AlphaMode::edge_test;
             else material.alpha=AlphaMode::other;

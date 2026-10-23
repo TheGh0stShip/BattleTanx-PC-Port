@@ -57,9 +57,11 @@ adds a player-tank state, navigation-constrained movement, and a bounded
 projectile pool. The current M1A1 drive slice uses its recovered retail
 turn, acceleration, grip, drag, and rotated footprint. Static collision uses
 the recovered level-object type filter and each object's rotated level shape.
-The temporary top-down
-presentation remains bring-up code rather than a claim of complete retail
-gameplay.
+The current native presentation decodes and draws the retail world and tank
+meshes with their textures through a host-owned software z-buffer. Terrain
+height, near-plane polygon clipping, bilinear filtering, and several uncommon
+material modes remain bring-up work rather than a claim of complete retail
+rendering fidelity.
 The original interpolated 16-bit angle behavior reads its 257-sample sine
 table directly from the verified ROM rather than embedding retail data.
 Recovered rotated-bound geometry uses the same angle path and preserves the
@@ -73,10 +75,10 @@ RGBA32, I4, and I8. No original display commands are executed at runtime.
 `--window` runs the native gameplay bring-up through the pinned SDL2 host
 library. It creates a native Linux or Windows window, maps keyboard and game
 controllers to the original controller representation, and presents a native
-pixel surface. It does not execute or translate N64 code. Its tank-following
-bring-up view plots nearby decoded level-one retail placements and starts a
-player tank from the decoded retail
-group-zero spawn marker on open navigation data.
+pixel surface. It does not execute or translate N64 code. Its recovered
+tank-following camera renders decoded level-one retail placements and starts a
+player tank from the decoded retail group-zero spawn marker on open navigation
+data.
 Drive with the left stick or WASD and fire the current cannon shell with the
 left trigger or Left Shift. The default retail control preset keeps the turret
 aligned with the hull. Movement and projectile travel stop at navigation

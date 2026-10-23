@@ -13,6 +13,7 @@
 #include "battletanx/level.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/resource.hpp"
+#include "battletanx/render_math.hpp"
 #include "battletanx/sha256.hpp"
 #include "battletanx/texture.hpp"
 
@@ -56,6 +57,14 @@ int main() {
     CHECK(battletanx::fixed_rate_tick(1500000000U,30U)==45U);
     CHECK(battletanx::fixed_rate_tick(UINT64_MAX,0U)==0U);
     CHECK(battletanx::fixed_rate_tick(UINT64_MAX,30U)>UINT64_C(553000000000));
+    {
+        const auto projection=battletanx::perspective_matrix(
+            37.0F,4.0F/3.0F,16.0F,5000.0F);
+        CHECK(std::abs(projection[0]-2.24151F)<0.0001F);
+        CHECK(std::abs(projection[5]-2.98868F)<0.0001F);
+        CHECK(std::abs(projection[10]+1.00642F)<0.0001F);
+        CHECK(std::abs(projection[11]+32.1027F)<0.001F);
+    }
 
     {
         std::array<std::uint8_t,8> pool{};
@@ -323,6 +332,11 @@ int main() {
         CHECK(std::abs(angles.cosine(0U)-1.0F)<0.000001F);
         CHECK(std::abs(angles.cosine(0x4000U))<0.000001F);
         CHECK(std::abs(angles.sine(0x14000U)-1.0F)<0.000001F);
+        const auto yaw=battletanx::yaw_translation_matrix(
+            0x4000U,10.0F,0.0F,20.0F,angles);
+        CHECK(std::abs(yaw[2]-1.0F)<0.000001F &&
+              std::abs(yaw[10])<0.000001F);
+        CHECK(yaw[3]==10.0F && yaw[11]==20.0F);
 
         battletanx::PlayerTank camera_tank;
         const auto camera=battletanx::build_flat_tank_camera(camera_tank,angles);

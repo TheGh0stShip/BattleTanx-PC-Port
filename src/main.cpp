@@ -1,5 +1,6 @@
 #include "battletanx/angle.hpp"
 #include "battletanx/bundle.hpp"
+#include "battletanx/camera.hpp"
 #include "battletanx/controller_pak.hpp"
 #include "battletanx/fixed_tick.hpp"
 #include "battletanx/lzari.hpp"
@@ -8,6 +9,7 @@
 #include "battletanx/platform.hpp"
 #include "battletanx/resource.hpp"
 #include "battletanx/rom.hpp"
+#include "battletanx/software_renderer.hpp"
 
 #include <algorithm>
 #include <array>
@@ -20,40 +22,14 @@
 #include <thread>
 
 namespace {
-void fill_rectangle(std::array<std::uint32_t,battletanx::native_width*battletanx::native_height>& pixels,
-                    int x,int y,int width,int height,std::uint32_t color) {
-    const int left=std::clamp(x,0,battletanx::native_width);
-    const int top=std::clamp(y,0,battletanx::native_height);
-    const int right=std::clamp(x+width,0,battletanx::native_width);
-    const int bottom=std::clamp(y+height,0,battletanx::native_height);
-    for (int row=top; row<bottom; ++row) {
-        std::fill(pixels.begin()+row*battletanx::native_width+left,
-                  pixels.begin()+row*battletanx::native_width+right,color);
-    }
-}
-
-void draw_line(std::array<std::uint32_t,battletanx::native_width*battletanx::native_height>& pixels,
-               int x0,int y0,int x1,int y1,std::uint32_t color) {
-    const int dx=std::abs(x1-x0);
-    const int sx=x0<x1 ? 1 : -1;
-    const int dy=-std::abs(y1-y0);
-    const int sy=y0<y1 ? 1 : -1;
-    int error=dx+dy;
-    for (;;) {
-        fill_rectangle(pixels,x0,y0,2,2,color);
-        if (x0==x1 && y0==y1) break;
-        const int doubled=2*error;
-        if (doubled>=dy) { error+=dy; x0+=sx; }
-        if (doubled<=dx) { error+=dx; y0+=sy; }
-    }
-}
-
 void run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::NavigationLevel& navigation,
                              const battletanx::AngleTable& angles,
-                             const battletanx::InputBindings& bindings) {
+                             const battletanx::InputBindings& bindings,
+                             const battletanx::ModelAssets& assets) {
     auto platform=battletanx::Platform::create("BattleTanx native source port");
-    std::array<std::uint32_t,battletanx::native_width*battletanx::native_height> pixels{};
+    battletanx::SoftwareRenderer renderer(
+        battletanx::native_width,battletanx::native_height);
     std::array<battletanx::ControllerPad,4> previous{};
     std::array<battletanx::ControllerPad,4> current{};
     constexpr std::uint32_t ticks_per_second=30U;
@@ -61,13 +37,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     auto tank=battletanx::spawn_player_tank(world,navigation);
     battletanx::PlayerProjectilePool projectiles{};
     std::uint64_t game_tick=0U;
-    constexpr float view_scale=0.12F;
-    const auto screen_x=[&](float value) {
-        return battletanx::native_width/2+static_cast<int>((value-tank.x)*view_scale);
-    };
-    const auto screen_y=[&](float value) {
-        return battletanx::native_height/2-static_cast<int>((value-tank.z)*view_scale);
-    };
+    bool verified_native_frame=false;
     while (platform->pump(current)) {
         const auto pad=battletanx::translate_player_input(current[0],previous[0]);
         auto input=battletanx::translate_drive_input(pad,bindings);
@@ -86,47 +56,50 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             input.fire_pressed=false;
             input.special_pressed=false;
         }
-        pixels.fill(0x00101820U);
-        fill_rectangle(pixels,24,24,battletanx::native_width-48,4,0x00608090U);
-        fill_rectangle(pixels,24,battletanx::native_height-28,
-                       battletanx::native_width-48,4,0x00608090U);
-        fill_rectangle(pixels,24,24,4,battletanx::native_height-48,0x00608090U);
-        fill_rectangle(pixels,battletanx::native_width-28,24,4,
-                       battletanx::native_height-48,0x00608090U);
-        for (const auto& item : world.items) {
-            if (!std::isfinite(item.x) || !std::isfinite(item.z)) continue;
-            const int x=screen_x(item.x);
-            const int y=screen_y(item.z);
-            fill_rectangle(pixels,x-1,y-1,3,3,0x0060C070U);
-        }
-        if (tank.navigation_triangle!=0U) {
-            const auto& corners=navigation.triangles[tank.navigation_triangle].corners;
-            for (std::size_t index=0; index<corners.size(); ++index) {
-                const auto& a=navigation.vertices[corners[index].vertex];
-                const auto& b=navigation.vertices[corners[(index+1U)%corners.size()].vertex];
-                draw_line(pixels,screen_x(a.x),screen_y(a.z),screen_x(b.x),screen_y(b.z),
-                          0x00408090U);
-            }
+        battletanx::DrawList draw;
+        const auto camera=battletanx::build_flat_tank_camera(tank,angles);
+        draw.view=battletanx::look_at_matrix(camera.eye,camera.target,camera.up);
+        draw.projection=battletanx::perspective_matrix(
+            camera.vertical_fov_degrees,camera.aspect_ratio,
+            camera.near_plane,camera.far_plane);
+        draw.items.reserve(world.items.size()+4U+projectiles.size());
+        for (const auto& item:world.items) {
+            const std::uint8_t layer=item.type==0 ? 0U : item.type==0x1C ? 6U : 2U;
+            draw.items.push_back({static_cast<std::uint32_t>(item.shape),
+                battletanx::yaw_translation_matrix(item.angle,item.x,0.0F,item.z,angles),
+                layer,static_cast<std::int8_t>(item.kind&15U)});
         }
         const auto heading=static_cast<std::uint16_t>(
             tank.heading_degrees*(65536.0F/360.0F));
-        const int tank_x=screen_x(tank.x);
-        const int tank_y=screen_y(tank.z);
-        const int nose_x=screen_x(tank.x+angles.sine(heading)*80.0F);
-        const int nose_y=screen_y(tank.z+angles.cosine(heading)*80.0F);
         const auto turret=static_cast<std::uint16_t>(
             tank.turret_degrees*(65536.0F/360.0F));
-        const int turret_x=screen_x(tank.x+angles.sine(turret)*105.0F);
-        const int turret_y=screen_y(tank.z+angles.cosine(turret)*105.0F);
-        fill_rectangle(pixels,tank_x-5,tank_y-5,10,10,0x0040E080U);
-        draw_line(pixels,tank_x,tank_y,nose_x,nose_y,0x0080A050U);
-        draw_line(pixels,tank_x,tank_y,turret_x,turret_y,0x00F0D040U);
+        const auto body=battletanx::yaw_translation_matrix(
+            heading,tank.x,0.0F,tank.z,angles);
+        const auto turret_transform=battletanx::yaw_translation_matrix(
+            turret,tank.x,0.0F,tank.z,angles);
+        for (const std::uint32_t slot:{0x0BU,0x0CU,0x0EU}) {
+            draw.items.push_back({assets.set_base()+slot,body,1U,0});
+        }
+        draw.items.push_back({assets.set_base()+0x0DU,turret_transform,1U,0});
         for (const auto& projectile:projectiles) {
             if (!projectile.active) continue;
-            fill_rectangle(pixels,screen_x(projectile.x)-2,screen_y(projectile.z)-2,
-                           5,5,0x00F08030U);
+            draw.items.push_back({assets.set_base()+0x24U,
+                battletanx::yaw_translation_matrix(
+                    turret,projectile.x,36.0F,projectile.z,angles),3U,0});
         }
-        platform->present(pixels,battletanx::native_width,battletanx::native_height);
+        renderer.render(draw,assets);
+        if (!verified_native_frame) {
+            const auto pixels=renderer.pixels();
+            const auto visible=static_cast<std::size_t>(std::count_if(
+                pixels.begin(),pixels.end(),[](std::uint32_t pixel) {
+                    return pixel!=0x00101820U;
+                }));
+            if (visible<100U) throw std::runtime_error("native model frame is empty");
+            std::cout << "Rendered native model frame: " << visible
+                      << " visible pixels\n";
+            verified_native_frame=true;
+        }
+        platform->present(renderer.pixels(),battletanx::native_width,battletanx::native_height);
         const auto next_tick_nanoseconds=static_cast<std::int64_t>(
             ((game_tick+1U)*UINT64_C(1000000000)+ticks_per_second-1U)/ticks_per_second);
         std::this_thread::sleep_until(
@@ -220,7 +193,8 @@ int main(int argc, char** argv) {
                   << preview_assets.materials().size() << " materials\n";
         std::cout << "Native runtime foundation is ready; gameplay bring-up is in progress.\n";
         if (show_window) {
-            run_platform_diagnostic(*preview_world,*preview_navigation,angles,bindings);
+            run_platform_diagnostic(
+                *preview_world,*preview_navigation,angles,bindings,preview_assets);
         }
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';
