@@ -89,7 +89,7 @@ Outcome run(Battle& battle,std::int32_t max_frames,InputFor input_for) {
 }
 
 constexpr const char* expected_battle_checksum=
-    "9fcfc843376b5218a84c9fcc65b2e7c00be85e7168cf96a249b8da0aabf41144";
+    "6f95cbee6e97a30e70c3e002900a6d1fb929d06839c0ec9628061cdbcfc9def1";
 } // namespace
 
 RUNTIME_TEST(headless_battle_player_destroys_enemy_and_succeeds) {
@@ -415,6 +415,27 @@ RUNTIME_TEST(player_collects_health_pickup_during_battle) {
     for (const GameplayEvent& e : battle.session.gameplay_events()) event|=e.kind==GameplayEventKind::pickup_collected;
     for (const SoundEvent& e : battle.session.sound_events()) sound|=e.sound_id==retail::sound_pickup;
     REQUIRE(event && sound);
+    return true;
+}
+
+RUNTIME_TEST(player_collects_secondary_weapon_pickup_in_session) {
+    BattleSession session(config_with_seed(0x5151U),angles(),open_ground_unit_motion(angles()));
+    session.add_owner(0U,OwnerSetup{0U,false,1U,0,false});
+    session.add_owner(1U,OwnerSetup{1U,true,1U,0,false});
+    const EntityId player=*session.spawn_unit(
+        UnitSpawn{retail::UnitKind::tank,0U,0.0F,0.0F,0U,0U});
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,1U,5000.0F,5000.0F,0U,0U});
+    PickupRecord pickup;
+    pickup.id={4U,1U};
+    pickup.kind=2U;
+    REQUIRE(session.add_pickup(pickup));
+    session.mission().force_state(MatchState::live,0);
+    session.step(SessionInput{});
+    const UnitRecord* unit=session.units().get(player);
+    REQUIRE(unit!=nullptr);
+    REQUIRE(unit->ammo[4]==5);
+    REQUIRE(unit->secondary_weapon.kind==4U);
+    REQUIRE(session.owners()[0].score==pickup_announce_progress);
     return true;
 }
 

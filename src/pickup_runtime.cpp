@@ -88,7 +88,8 @@ bool apply_pickup_effect(UnitRecord& unit,std::uint8_t kind,const PickupOptions&
 PickupCollectResult collect_pickups(std::span<PickupRecord> pickups,
                                     std::span<PickupCollector> collectors,
                                     std::int32_t tick,const PickupOptions& options,
-                                    GameplayEventQueue& events,SoundEventQueue& sounds) {
+                                    GameplayEventQueue& events,SoundEventQueue& sounds,
+                                    const PickupApply& apply) {
     PickupCollectResult result;
     for (PickupRecord& pickup : pickups) {
         if (pickup.removed || !pickup.active || pickup.consumed) continue;
@@ -101,7 +102,8 @@ PickupCollectResult collect_pickups(std::span<PickupRecord> pickups,
             pickup.consumed=true;
             pickup.active=false;
             ++result.collected;
-            const bool applied=apply_pickup_effect(*unit,pickup.kind,options);
+            const bool applied=apply ? apply(collector,pickup.kind) :
+                                       apply_pickup_effect(*unit,pickup.kind,options);
             if (!applied) ++result.unsupported;
             if (!options.replay_active) {
                 sounds.push(SoundEvent{retail::sound_pickup,unit->x,unit->y,unit->z,

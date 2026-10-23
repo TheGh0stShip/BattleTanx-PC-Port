@@ -217,6 +217,7 @@ std::optional<EntityId> BattleSession::spawn_unit(const UnitSpawn& spawn) {
     const auto id=units_.allocate();
     if (!id) return std::nullopt;
     UnitRecord& unit=*units_.get(*id);
+    timed_powerups_[id->slot]=TimedPowerupState{};
     unit=make_unit(spawn.kind,spawn.owner,owner.team,spawn.x,spawn.z,spawn.heading,tick_,
                    owner.computer ? UnitControl::computer : UnitControl::player);
     unit.flags=spawn.flags;
@@ -482,8 +483,23 @@ void BattleSession::update_pickup_state() {
         collectors[count++]=PickupCollector{id,&unit,owner_class,
                                             static_cast<std::uint8_t>(unit.control==UnitControl::computer ? 2U : 0U)};
     });
+    const PickupApply apply=[&](PickupCollector& collector,std::uint8_t kind) {
+        if (collector.unit==nullptr || collector.id.slot>=timed_powerups_.size() ||
+            collector.unit->owner>=owner_capacity) return false;
+        PickupEffectOptions options;
+        options.base=config_.pickups;
+        options.game_mode=static_cast<std::int32_t>(config_.mission.game_kind);
+        options.tick=tick_;
+        const PickupEffectResult result=apply_pickup_effect_complete(
+            *collector.unit,owners_[collector.unit->owner],kind,options,
+            timed_powerups_[collector.id.slot]);
+        return result.status==PickupEffectStatus::applied;
+    };
     collect_pickups(pickups_,std::span<PickupCollector>(collectors.data(),count),tick_,config_.pickups,
-                    events_,sounds_);
+                    events_,sounds_,apply);
+    for (std::size_t slot=0U; slot<unit_capacity; ++slot) {
+        if (units_.slot_occupied(slot)) update_timed_powerups(timed_powerups_[slot],tick_);
+    }
     update_pickups(pickups_,tick_,config_.pickups,rng_,pickup_weights_ ? &*pickup_weights_ : nullptr);
 }
 
@@ -582,12 +598,14 @@ void BattleSession::update_units(const SessionInput& input) {
         if (!unit->alive) continue;
         motion_(*unit,drive);
         if (drive.fire) {
-            (void)fire_weapon(weapons,id,unit->primary_weapon,
-                              FireRequest{true,drive.fire_pressed});
+            const WeaponFireStatus status=fire_weapon(
+                weapons,id,unit->primary_weapon,FireRequest{true,drive.fire_pressed});
+            if (status==WeaponFireStatus::fired) timed_powerups_[id.slot].last_fire_tick=tick_;
         }
         if (drive.special && unit->secondary_weapon.kind!=0U) {
-            (void)fire_weapon(weapons,id,unit->secondary_weapon,
-                              FireRequest{true,drive.special_pressed});
+            const WeaponFireStatus status=fire_weapon(
+                weapons,id,unit->secondary_weapon,FireRequest{true,drive.special_pressed});
+            if (status==WeaponFireStatus::fired) timed_powerups_[id.slot].last_fire_tick=tick_;
         }
     }
 }
@@ -716,6 +734,7 @@ void BattleSession::serialize(StateWriter& writer) const {
         writer.boolean(pickup.removed);
     }
     weapon_state_.serialize(writer);
+    for (const TimedPowerupState& timed : timed_powerups_) timed.serialize(writer);
     writer.u32(static_cast<std::uint32_t>(turrets_.size()));
     for (const TurretRecord& turret : turrets_) turret.serialize(writer);
     for (const TurretOwnerConfig& owner : turret_owner_config_) {

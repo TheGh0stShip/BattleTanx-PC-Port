@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <span>
 
 namespace battletanx {
@@ -63,6 +64,7 @@ struct PickupCollectResult {
     std::size_t collected{};
     std::size_t unsupported{};
 };
+using PickupApply=std::function<bool(PickupCollector&,std::uint8_t)>;
 
 [[nodiscard]] bool pickup_overlaps(const PickupRecord& pickup,const UnitRecord& unit) noexcept;
 [[nodiscard]] bool pickup_kind_supported(std::uint8_t kind) noexcept;
@@ -75,7 +77,8 @@ bool apply_pickup_effect(UnitRecord& unit,std::uint8_t kind,const PickupOptions&
 PickupCollectResult collect_pickups(std::span<PickupRecord> pickups,
                                     std::span<PickupCollector> collectors,
                                     std::int32_t tick,const PickupOptions& options,
-                                    GameplayEventQueue& events,SoundEventQueue& sounds);
+                                    GameplayEventQueue& events,SoundEventQueue& sounds,
+                                    const PickupApply& apply={});
 
 // func_800913AC for every pickup. Weights may be null; the kind is then kept.
 void update_pickups(std::span<PickupRecord> pickups,std::int32_t tick,

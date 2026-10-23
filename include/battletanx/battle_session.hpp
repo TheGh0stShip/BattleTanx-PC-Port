@@ -11,6 +11,7 @@
 #include "battletanx/navigation_route.hpp"
 #include "battletanx/objective_runtime.hpp"
 #include "battletanx/pickup_runtime.hpp"
+#include "battletanx/pickup_effects.hpp"
 #include "battletanx/state_hash.hpp"
 #include "battletanx/unit_kinds.hpp"
 #include "battletanx/weapon_runtime.hpp"
@@ -201,6 +202,7 @@ private:
     std::array<std::int32_t,owner_capacity> spawner_budgets_{};
     std::array<bool,owner_capacity> spawner_gates_{};
     std::optional<PickupWeights> pickup_weights_;
+    std::array<TimedPowerupState,unit_capacity> timed_powerups_{};
     MissionState mission_;
     std::optional<ObjectiveRuntime> objective_;
     CampaignAiController campaign_ai_;
