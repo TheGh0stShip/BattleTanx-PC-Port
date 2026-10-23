@@ -133,6 +133,8 @@ void update_player_tank(PlayerTank& tank,const DriveInput& input,
     constexpr float acceleration_scale=1.0F/100.0F;
     constexpr float grip=300.0F;
     constexpr float drag=250.0F;
+    tank.track_phase_left=static_cast<std::uint8_t>(tank.track_phase_left+tank.track_left);
+    tank.track_phase_right=static_cast<std::uint8_t>(tank.track_phase_right+tank.track_right);
     const float previous_heading=tank.heading_degrees;
     const float previous_turret=tank.turret_degrees;
     float steering=input.rotation;
@@ -141,6 +143,10 @@ void update_player_tank(PlayerTank& tank,const DriveInput& input,
     const float turn=steering*turn_acceleration*frame_rate_scale;
     tank.heading_degrees=wrap_degrees(tank.heading_degrees-turn);
     tank.turret_degrees=wrap_degrees(tank.turret_degrees-turn);
+    tank.track_left=static_cast<std::int8_t>(
+        static_cast<std::int32_t>(-throttle/2.0F+steering/800.0F));
+    tank.track_right=static_cast<std::int8_t>(
+        static_cast<std::int32_t>(-throttle/2.0F-steering/800.0F));
 
     const auto angle=degrees_to_angle(tank.heading_degrees);
     PlanarMotion motion{};

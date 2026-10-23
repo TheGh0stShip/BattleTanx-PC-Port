@@ -65,6 +65,9 @@ int main() {
     CHECK(battletanx::select_model_lod(3U,1000000.0F)==0U);
     CHECK(battletanx::select_model_lod(3U,1000001.0F)==1U);
     CHECK(battletanx::select_model_lod(3U,2890001.0F)==2U);
+    CHECK(battletanx::decode_world_animation_phase(0x03U)==3);
+    CHECK(battletanx::decode_world_animation_phase(0xAEU)==-2);
+    CHECK(battletanx::decode_world_animation_phase(0xFFU)==-1);
     CHECK(battletanx::clipped_view_volume_vertex_count(
         {{{0.0F,0.0F,0.0F,1.0F},{0.5F,0.0F,0.0F,1.0F},
           {0.0F,0.5F,0.0F,1.0F}}})==3U);
@@ -205,6 +208,19 @@ int main() {
         try { static_cast<void>(battletanx::decode_material_blob(material,0U)); }
         catch (const std::runtime_error&) { rejected=true; }
         CHECK(rejected);
+
+        battletanx::NativeMaterial animated;
+        animated.tile_left=7.0F;
+        animated.tile_top=9.0F;
+        animated.animation_frames={
+            {0xF200400CU,0U},
+            {0xF2008010U,0U}};
+        const auto fixed=battletanx::resolve_material_tile_origin(animated,1,0U);
+        CHECK(fixed.left==2.0F && fixed.top==4.0F);
+        const auto looping=battletanx::resolve_material_tile_origin(animated,-1,2U);
+        CHECK(looping.left==1.0F && looping.top==3.0F);
+        const auto half_speed=battletanx::resolve_material_tile_origin(animated,-2,3U);
+        CHECK(half_speed.left==2.0F && half_speed.top==4.0F);
     }
 
     {
@@ -462,6 +478,10 @@ int main() {
         drive.throttle=80.0F;
         battletanx::update_player_tank(tank,drive,drive_world,drive_nav,angles);
         CHECK(tank.x>start_x && tank.navigation_triangle==1U);
+        CHECK(tank.track_left==-40 && tank.track_right==-40);
+        CHECK(tank.track_phase_left==0U && tank.track_phase_right==0U);
+        battletanx::update_player_tank(tank,drive,drive_world,drive_nav,angles);
+        CHECK(tank.track_phase_left==216U && tank.track_phase_right==216U);
         battletanx::WorldLevel collision_world;
         battletanx::WorldItem wall;
         wall.type=1;

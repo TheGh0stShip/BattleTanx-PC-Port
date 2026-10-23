@@ -65,6 +65,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             input.special_pressed=false;
         }
         battletanx::DrawList draw;
+        draw.animation_tick=game_tick;
         const auto camera=battletanx::build_flat_tank_camera(tank,angles);
         draw.eye=camera.eye;
         draw.view=battletanx::look_at_matrix(camera.eye,camera.target,camera.up);
@@ -76,7 +77,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             const std::uint8_t layer=item.type==0 ? 0U : item.type==0x1C ? 6U : 2U;
             draw.items.push_back({static_cast<std::uint32_t>(item.shape),
                 battletanx::yaw_translation_matrix(item.angle,item.x,0.0F,item.z,angles),
-                layer,static_cast<std::int8_t>(item.kind&15U)});
+                layer,battletanx::decode_world_animation_phase(item.kind)});
         }
         const auto heading=static_cast<std::uint16_t>(
             tank.heading_degrees*(65536.0F/360.0F));
@@ -88,9 +89,11 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             heading,tank.x,tank.y,tank.z,ground_normal,angles);
         const auto turret_transform=battletanx::terrain_yaw_translation_matrix(
             turret,tank.x,tank.y,tank.z,ground_normal,angles);
-        for (const std::uint32_t slot:{0x0BU,0x0CU,0x0EU}) {
-            draw.items.push_back({assets.set_base()+slot,body,1U,0});
-        }
+        draw.items.push_back({assets.set_base()+0x0BU,body,1U,
+            static_cast<std::int8_t>(tank.track_phase_left>>4U)});
+        draw.items.push_back({assets.set_base()+0x0CU,body,1U,
+            static_cast<std::int8_t>(tank.track_phase_right>>4U)});
+        draw.items.push_back({assets.set_base()+0x0EU,body,1U,0});
         draw.items.push_back({assets.set_base()+0x0DU,turret_transform,1U,0});
         for (const auto& projectile:projectiles) {
             if (!projectile.active) continue;

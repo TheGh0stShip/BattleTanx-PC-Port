@@ -103,10 +103,11 @@ std::uint32_t texel(const NativeMaterial& material,int x,int y) {
                         static_cast<std::size_t>(wrapped_x)];
 }
 
-std::uint32_t sample(const NativeMaterial& material,float u,float v) {
+std::uint32_t sample(const NativeMaterial& material,const MaterialTileOrigin& origin,
+                     float u,float v) {
     if (!material.texture) return material.primitive_rgba;
-    u-=material.tile_left;
-    v-=material.tile_top;
+    u-=origin.left;
+    v-=origin.top;
     const int x=static_cast<int>(std::floor(u));
     const int y=static_cast<int>(std::floor(v));
     if (!material.bilinear) return texel(material,x,y);
@@ -160,6 +161,7 @@ std::uint32_t combine(const NativeMaterial& material,std::uint32_t texture,
 
 void rasterize_triangle(int width,int height,std::vector<std::uint32_t>& color,
                         std::vector<float>& depth,const NativeMaterial& material,
+                        const MaterialTileOrigin& tile_origin,
                         const std::array<ClipVertex,3>& clip_vertices) {
     std::array<RasterVertex,3> vertices{};
     for (std::size_t corner=0U; corner<vertices.size(); ++corner) {
@@ -214,7 +216,8 @@ void rasterize_triangle(int width,int height,std::vector<std::uint32_t>& color,
                 interpolate(&RasterVertex::g_over_w),
                 interpolate(&RasterVertex::b_over_w),
                 interpolate(&RasterVertex::a_over_w));
-            const std::uint32_t output=combine(material,sample(material,u,v),shade);
+            const std::uint32_t output=combine(
+                material,sample(material,tile_origin,u,v),shade);
             if (material.alpha==AlphaMode::edge_test && (output>>24U)<128U) continue;
             if (material.depth_test) depth[pixel]=pixel_depth;
             color[pixel]=output&0x00FFFFFFU;
@@ -236,6 +239,13 @@ std::size_t select_model_lod(std::uint8_t lod_count,float distance_squared) noex
     if (lod_count==2U) return distance_squared>90000.0F ? 1U : 0U;
     if (distance_squared>2890000.0F) return 2U;
     return distance_squared>1000000.0F ? 1U : 0U;
+}
+
+std::int8_t decode_world_animation_phase(std::uint8_t kind) noexcept {
+    const std::uint8_t phase=kind&15U;
+    if (phase==15U) return -1;
+    if (phase==14U) return -2;
+    return static_cast<std::int8_t>(phase);
 }
 
 std::size_t clipped_view_volume_vertex_count(
@@ -271,6 +281,8 @@ void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
             for (const auto& part:set.lods[lod]) {
                 const auto& mesh=assets.meshes()[part.mesh];
                 const auto& material=assets.materials()[part.material];
+                const auto tile_origin=resolve_material_tile_origin(
+                    material,item.animation_phase,list.animation_tick);
                 for (std::size_t triangle=0U; triangle+2U<mesh.indices.size(); triangle+=3U) {
                     std::array<ClipVertex,3> input{};
                     bool finite=true;
@@ -292,7 +304,7 @@ void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
                     ClipPolygon polygon{};
                     const std::size_t vertex_count=clip_view_volume(input,polygon);
                     for (std::size_t fan=1U; fan+1U<vertex_count; ++fan) {
-                        rasterize_triangle(width_,height_,color_,depth_,material,
+                        rasterize_triangle(width_,height_,color_,depth_,material,tile_origin,
                             {polygon[0],polygon[fan],polygon[fan+1U]});
                     }
                 }

@@ -63,6 +63,10 @@ struct PlayerTank {
     std::uint16_t navigation_triangle{};
     std::int32_t primary_last_tick{-1000};
     std::int16_t primary_ammo{70};
+    std::int8_t track_left{};
+    std::int8_t track_right{};
+    std::uint8_t track_phase_left{};
+    std::uint8_t track_phase_right{};
 };
 
 struct PlayerProjectile {

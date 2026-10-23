@@ -21,10 +21,12 @@ struct DrawList {
     Matrix4 view{identity_matrix()};
     Matrix4 projection{identity_matrix()};
     CameraVector eye{};
+    std::uint64_t animation_tick{};
     std::vector<DrawItem> items;
 };
 
 std::size_t select_model_lod(std::uint8_t lod_count,float distance_squared) noexcept;
+std::int8_t decode_world_animation_phase(std::uint8_t kind) noexcept;
 std::size_t clipped_view_volume_vertex_count(
     const std::array<std::array<float,4>,3>& triangle) noexcept;
 

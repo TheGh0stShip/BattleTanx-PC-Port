@@ -226,4 +226,21 @@ NativeMaterial decode_material_blob(std::span<const std::uint8_t> blob,
     return material;
 }
 
+MaterialTileOrigin resolve_material_tile_origin(
+    const NativeMaterial& material,std::int8_t phase,std::uint64_t animation_tick) noexcept {
+    MaterialTileOrigin origin{material.tile_left,material.tile_top};
+    if (material.animation_frames.empty()) return origin;
+    std::size_t frame=0U;
+    if (phase>=0) frame=static_cast<std::uint8_t>(phase);
+    else if (phase==-1) frame=static_cast<std::size_t>(animation_tick);
+    else frame=static_cast<std::size_t>(animation_tick>>1U);
+    frame%=material.animation_frames.size();
+    const auto& command=material.animation_frames[frame];
+    if ((command.word0>>24U)==0xF2U && ((command.word1>>24U)&7U)==0U) {
+        origin.left=static_cast<float>((command.word0>>12U)&0xFFFU)/4.0F;
+        origin.top=static_cast<float>(command.word0&0xFFFU)/4.0F;
+    }
+    return origin;
+}
+
 } // namespace battletanx
