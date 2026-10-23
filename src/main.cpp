@@ -15,6 +15,7 @@
 #include "battletanx/level.hpp"
 #include "battletanx/level_spawns.hpp"
 #include "battletanx/model.hpp"
+#include "battletanx/music_selection.hpp"
 #include "battletanx/owner_profiles.hpp"
 #include "battletanx/pc_settings.hpp"
 #include "battletanx/platform.hpp"
@@ -451,6 +452,19 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                 battletanx::yaw_translation_matrix(
                     shell.heading,shell.x,shell.y,shell.z,angles),3U,0});
         });
+        battletanx::effects::EffectRenderQueue effect_draws;
+        bridge.effect_runtime().collect(effect_draws);
+        for (const auto& effect:effect_draws.events()) {
+            if (effect.model_slot>=battletanx::effects::model_slot_count) continue;
+            const std::uint32_t set=assets.set_base()+effect.model_slot;
+            if (set>=assets.sets().size() || assets.set(set).lod_count==0U) continue;
+            const auto ground=terrain.sample(effect.x,effect.z);
+            const float y=effect.y!=0.0F ? effect.y : (ground ? ground->height : 0.0F);
+            const auto angle=static_cast<std::uint16_t>(
+                game_tick*0x500U+static_cast<std::uint16_t>(effect.index)*0x800U);
+            draw.items.push_back({set,
+                battletanx::yaw_translation_matrix(angle,effect.x,y,effect.z,angles),3U,0});
+        }
         const auto pickup_angle=static_cast<std::uint16_t>(game_tick*0x600U);
         for (const auto& pickup:session.pickups()) {
             if (!pickup.active || pickup.removed || pickup.kind>=pickup_models.size()) continue;
@@ -679,8 +693,11 @@ int main(int argc, char** argv) {
             }
             const auto active_assets=battletanx::ModelAssets::load(rom,*active_world);
             std::optional<battletanx::MusicTrack> music;
-            if (show_window) music=battletanx::render_music_sequence(
-                rom,static_cast<std::uint32_t>(wave->mission_id));
+            const auto music_track=battletanx::music_selection::music_track_for_level(wave->mission_id);
+            if (show_window && music_track)
+                music=battletanx::render_music_sequence(rom,*music_track);
+            if (show_window && !music)
+                throw std::runtime_error("campaign level has no native music mapping");
             for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x41U,0x52U}) {
                 if (active_assets.set_base()+slot>=active_assets.sets().size() ||
                     active_assets.set(active_assets.set_base()+slot).lod_count==0U) {
