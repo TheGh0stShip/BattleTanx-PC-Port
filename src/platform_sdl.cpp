@@ -79,12 +79,13 @@ class SdlPlatform final : public Platform {
         desired.userdata=this;
         audio_device_=SDL_OpenAudioDevice(nullptr,0,&desired,&audio_spec_,0);
         if (audio_device_==0U) {
-            const auto error=sdl_error("audio device creation failed");
-            shutdown();
-            throw error;
+            // Video and input remain fully usable on machines without an
+            // available output device. Retain the requested format so asset
+            // validation stays deterministic, and run with muted audio.
+            audio_spec_=desired;
         }
         voices_.reserve(64U);
-        SDL_PauseAudioDevice(audio_device_,0);
+        if (audio_device_!=0U) SDL_PauseAudioDevice(audio_device_,0);
         for (int index=0; index<SDL_NumJoysticks(); ++index) open_controller(index);
     }
 
@@ -161,10 +162,10 @@ class SdlPlatform final : public Platform {
         if (sounds.sample_rate!=static_cast<std::uint32_t>(audio_spec_.freq)) {
             throw std::runtime_error("sound bank rate does not match the native audio device");
         }
-        SDL_LockAudioDevice(audio_device_);
+        if (audio_device_!=0U) SDL_LockAudioDevice(audio_device_);
         sounds_=sounds;
         voices_.clear();
-        SDL_UnlockAudioDevice(audio_device_);
+        if (audio_device_!=0U) SDL_UnlockAudioDevice(audio_device_);
     }
 
     void set_music_track(const MusicTrack& music,float gain) override {
@@ -172,14 +173,15 @@ class SdlPlatform final : public Platform {
             (music.stereo_samples.size()&1U)!=0U || !std::isfinite(gain)) {
             throw std::runtime_error("music track does not match the native audio device");
         }
-        SDL_LockAudioDevice(audio_device_);
+        if (audio_device_!=0U) SDL_LockAudioDevice(audio_device_);
         music_=music;
         music_cursor_=0U;
         music_gain_=std::clamp(gain,0.0F,1.0F);
-        SDL_UnlockAudioDevice(audio_device_);
+        if (audio_device_!=0U) SDL_UnlockAudioDevice(audio_device_);
     }
 
     void play_sound(std::uint16_t sound_id,float pan,float gain) override {
+        if (audio_device_==0U) return;
         if (sound_id>=sounds_.sounds.size() || !std::isfinite(pan) || !std::isfinite(gain)) return;
         pan=std::clamp(pan,-1.0F,1.0F);
         gain=std::clamp(gain,0.0F,1.0F);
