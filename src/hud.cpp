@@ -11,6 +11,8 @@ namespace battletanx {
 namespace {
 constexpr std::size_t hud_rom_start=0x308290U;
 constexpr std::size_t hud_rom_end=0x30BFE0U;
+constexpr std::size_t gameplay_font_rom_start=0x2C3E50U;
+constexpr std::size_t gameplay_font_rom_end=0x2CB230U;
 constexpr int coordinate_scale=2;
 
 std::uint32_t be32(std::span<const std::uint8_t> bytes,std::size_t offset) {
@@ -87,6 +89,41 @@ void text(std::span<std::uint32_t> pixels,int width,int height,
     }
 }
 
+void retail_text(std::span<std::uint32_t> pixels,int width,int height,
+                 const RetailFont& font,std::string_view value,int x,int y,
+                 int scale,std::uint32_t color) {
+    for (const unsigned char character:value) {
+        if (character==' ') { x+=3*scale; continue; }
+        if (character>=font.glyph_index.size()) continue;
+        const std::uint8_t glyph_id=font.glyph_index[character];
+        if (glyph_id==0xFFU || glyph_id>=font.glyphs.size()) continue;
+        const auto& character_glyph=font.glyphs[glyph_id];
+        for (std::uint32_t row=0U; row<font.height; ++row) {
+            for (std::uint32_t column=0U; column<character_glyph.width; ++column) {
+                const std::size_t source=(static_cast<std::size_t>(character_glyph.y)+row)*
+                    font.image_width+character_glyph.x+column;
+                const auto tinted=tint(font.atlas.pixels[source],color);
+                if ((tinted>>24U)==0U) continue;
+                rectangle(pixels,width,height,x+static_cast<int>(column)*scale,
+                          y+static_cast<int>(row)*scale,scale,scale,tinted);
+            }
+        }
+        x+=(static_cast<int>(character_glyph.width)+1)*scale;
+    }
+}
+
+int retail_text_width(const RetailFont& font,std::string_view value,int scale) {
+    int result{};
+    for (const unsigned char character:value) {
+        if (character==' ') { result+=3*scale; continue; }
+        if (character>=font.glyph_index.size()) continue;
+        const std::uint8_t glyph_id=font.glyph_index[character];
+        if (glyph_id!=0xFFU && glyph_id<font.glyphs.size())
+            result+=(static_cast<int>(font.glyphs[glyph_id].width)+1)*scale;
+    }
+    return result>0 ? result-scale : 0;
+}
+
 void number(std::span<std::uint32_t> pixels,int width,int height,
             std::int32_t value,int x,int y,int scale,std::uint32_t color) {
     std::array<char,16> reverse{};
@@ -128,8 +165,64 @@ HudAssets decode_hud_assets(std::span<const std::uint8_t> pack) {
     return assets;
 }
 
+std::vector<RetailFont> decode_retail_fonts(std::span<const std::uint8_t> pack) {
+    const std::size_t count=be32(pack,0U);
+    if (count==0U || count>32U || 4U+count*4U>pack.size())
+        throw std::runtime_error("font table header is invalid");
+    std::vector<RetailFont> fonts;
+    fonts.reserve(count);
+    for (std::size_t entry=0U; entry<count; ++entry) {
+        const std::size_t start=be32(pack,4U+entry*4U);
+        const std::size_t end=entry+1U<count ? be32(pack,4U+(entry+1U)*4U) : pack.size();
+        if (start>end || end>pack.size() || end-start<152U)
+            throw std::runtime_error("font entry range is invalid");
+        RetailFont font;
+        font.height=be32(pack,start+4U);
+        font.image_width=be32(pack,start+12U);
+        const std::size_t image_offset=be32(pack,start+20U);
+        if (font.height==0U || font.height>64U || font.image_width==0U ||
+            font.image_width>1024U || image_offset<152U || image_offset>end-start)
+            throw std::runtime_error("font metrics are invalid");
+        std::copy_n(pack.begin()+static_cast<std::ptrdiff_t>(start+24U),
+                    font.glyph_index.size(),font.glyph_index.begin());
+        std::size_t glyph_count{};
+        for (const auto index:font.glyph_index)
+            if (index!=0xFFU) glyph_count=std::max(glyph_count,static_cast<std::size_t>(index)+1U);
+        if (glyph_count==0U || 152U+glyph_count*4U>image_offset)
+            throw std::runtime_error("font glyph table is invalid");
+        font.glyphs.reserve(glyph_count);
+        std::uint32_t image_height{};
+        for (std::size_t glyph_index=0U; glyph_index<glyph_count; ++glyph_index) {
+            const std::size_t offset=start+152U+glyph_index*4U;
+            const FontGlyph glyph_data{pack[offset],pack[offset+1U],pack[offset+2U]};
+            if (glyph_data.width==0U ||
+                static_cast<std::uint32_t>(glyph_data.x)+glyph_data.width>font.image_width)
+                throw std::runtime_error("font glyph metrics are invalid");
+            image_height=std::max(image_height,
+                static_cast<std::uint32_t>(glyph_data.y)+font.height);
+            font.glyphs.push_back(glyph_data);
+        }
+        const std::size_t pixel_count=static_cast<std::size_t>(font.image_width)*image_height;
+        if (start+image_offset>end || pixel_count>end-(start+image_offset))
+            throw std::runtime_error("font atlas is truncated");
+        font.image_height=image_height;
+        font.atlas={font.image_width,image_height,std::vector<std::uint32_t>(pixel_count)};
+        for (std::size_t pixel_index=0U; pixel_index<pixel_count; ++pixel_index) {
+            const std::uint8_t encoded=pack[start+image_offset+pixel_index];
+            const std::uint32_t intensity=(encoded>>4U)*17U;
+            const std::uint32_t alpha=(encoded&15U)*17U;
+            font.atlas.pixels[pixel_index]=alpha<<24U | intensity*0x010101U;
+        }
+        fonts.push_back(std::move(font));
+    }
+    return fonts;
+}
+
 HudAssets load_hud_assets(const Rom& rom) {
-    return decode_hud_assets(rom.bytes().subspan(hud_rom_start,hud_rom_end-hud_rom_start));
+    auto assets=decode_hud_assets(rom.bytes().subspan(hud_rom_start,hud_rom_end-hud_rom_start));
+    assets.fonts=decode_retail_fonts(rom.bytes().subspan(
+        gameplay_font_rom_start,gameplay_font_rom_end-gameplay_font_rom_start));
+    return assets;
 }
 
 std::size_t filled_health_segments(std::int32_t health,std::int32_t max_health) noexcept {
@@ -168,11 +261,17 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
     }
     if (!banner.empty()) {
         constexpr int scale=4;
-        const int text_width=static_cast<int>(banner.size())*6*scale-scale;
+        const int text_width=!assets.fonts.empty() ?
+            retail_text_width(assets.fonts[0],banner,scale) :
+            static_cast<int>(banner.size())*6*scale-scale;
         const int x=(width-text_width)/2;
-        const int y=(height-7*scale)/2;
-        rectangle(pixels,width,height,x-12,y-10,text_width+24,7*scale+20,0xA0000000U);
-        text(pixels,width,height,banner,x,y,scale,color);
+        const int text_height=!assets.fonts.empty() ?
+            static_cast<int>(assets.fonts[0].height)*scale : 7*scale;
+        const int y=(height-text_height)/2;
+        rectangle(pixels,width,height,x-12,y-10,text_width+24,text_height+20,0xA0000000U);
+        if (!assets.fonts.empty())
+            retail_text(pixels,width,height,assets.fonts[0],banner,x,y,scale,color);
+        else text(pixels,width,height,banner,x,y,scale,color);
     }
 }
 

@@ -36,6 +36,29 @@ std::vector<std::uint8_t> hud_fixture() {
     }
     return bytes;
 }
+
+std::vector<std::uint8_t> font_fixture() {
+    constexpr std::size_t entry=8U;
+    constexpr std::size_t image_offset=156U;
+    std::vector<std::uint8_t> bytes(entry+image_offset+4U,0U);
+    write_be32(bytes,0U,1U);
+    write_be32(bytes,4U,static_cast<std::uint32_t>(entry));
+    write_be32(bytes,entry+4U,2U);
+    write_be32(bytes,entry+12U,2U);
+    write_be32(bytes,entry+20U,static_cast<std::uint32_t>(image_offset));
+    std::fill(bytes.begin()+static_cast<std::ptrdiff_t>(entry+24U),
+              bytes.begin()+static_cast<std::ptrdiff_t>(entry+152U),
+              std::uint8_t{0xFFU});
+    bytes[entry+24U+'A']=0U;
+    bytes[entry+152U]=0U;
+    bytes[entry+153U]=0U;
+    bytes[entry+154U]=2U;
+    bytes[entry+image_offset]=0xFFU;
+    bytes[entry+image_offset+1U]=0xF8U;
+    bytes[entry+image_offset+2U]=0x84U;
+    bytes[entry+image_offset+3U]=0x00U;
+    return bytes;
+}
 } // namespace
 
 int main() {
@@ -50,6 +73,14 @@ int main() {
     CHECK(assets.images.size()==battletanx::retail_hud_image_count);
     CHECK(assets.images[0].width==32U && assets.images[0].height==32U);
     CHECK(assets.images[18].pixels[0]==0xFFFFFFFFU);
+
+    const auto fonts=battletanx::decode_retail_fonts(font_fixture());
+    CHECK(fonts.size()==1U);
+    CHECK(fonts[0].height==2U && fonts[0].image_width==2U &&
+          fonts[0].image_height==2U);
+    CHECK(fonts[0].glyph_index['A']==0U && fonts[0].glyphs.size()==1U);
+    CHECK(fonts[0].atlas.pixels[0]==0xFFFFFFFFU);
+    CHECK(fonts[0].atlas.pixels[3]==0U);
 
     std::vector<std::uint32_t> framebuffer(640U*480U,0x00101820U);
     battletanx::HudState state;
