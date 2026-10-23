@@ -55,6 +55,7 @@ struct HudState {
     std::string_view briefing_text;
     std::string_view objective;
     std::string_view result;
+    std::string_view lineup;
     std::vector<HudMarker> markers;
 };
 

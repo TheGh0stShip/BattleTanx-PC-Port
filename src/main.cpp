@@ -31,6 +31,7 @@
 #include <iostream>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <thread>
 
@@ -65,7 +66,22 @@ std::array<std::uint32_t,pickup_model_kind_count> load_pickup_model_slots(
     return slots;
 }
 
-enum class WaveRunResult { quit, retry, advance };
+enum class WaveRunResult { quit, retry, advance, selection_previous, selection_next };
+
+std::string roster_summary(const battletanx::ControllerRoster& roster) {
+    std::array<std::size_t,3> counts{};
+    for (std::size_t index=0U; index<roster.count; ++index) ++counts[roster.kinds[index]];
+    std::string result="LINEUP";
+    constexpr std::array<std::string_view,3> names{"TANK","BIKE","GOLIATH"};
+    for (std::size_t kind=0U; kind<counts.size(); ++kind) {
+        if (counts[kind]==0U) continue;
+        result+=' ';
+        result+=std::to_string(counts[kind]);
+        result+=names[kind];
+        if (counts[kind]!=1U) result+='S';
+    }
+    return result;
+}
 
 WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::NavigationLevel& navigation,
@@ -104,6 +120,10 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
     const auto launch=battletanx::make_campaign_wave_launch(
         wave,campaign.carry,campaign.bonus,static_cast<std::uint8_t>(campaign.difficulty),
         campaign.unit_type);
+    const auto selected_roster=battletanx::decode_controller_roster(
+        roster_table,launch.player_unit_kind);
+    if (!selected_roster) throw std::runtime_error("campaign player roster is invalid");
+    const std::string selected_roster_summary=roster_summary(*selected_roster);
     for (std::size_t owner=0U; owner<battletanx::spawn_owner_count; ++owner) {
         auto& setup=spawn_input.owners[owner];
         setup.present=owner<static_cast<std::size_t>(wave.owner_count);
@@ -228,6 +248,10 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
     bool progress_saved=false;
     while (platform->pump(current)) {
         const auto pad=battletanx::translate_player_input(current[0],previous[0]);
+        if (session.mission().state()==battletanx::MatchState::title) {
+            if ((pad.pressed&0x0200U)!=0U) return WaveRunResult::selection_previous;
+            if ((pad.pressed&0x0100U)!=0U) return WaveRunResult::selection_next;
+        }
         auto input=battletanx::translate_drive_input(pad,bindings);
         battletanx::SessionInput session_input;
         session_input.drive=input;
@@ -435,6 +459,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             static_cast<std::size_t>(wave.wave_index)).value_or(std::string_view{});
         hud.result=battletanx::campaign_result_text(
             static_cast<std::size_t>(wave.wave_index)).value_or(std::string_view{});
+        if (wave.player_unit_from_selection) hud.lineup=selected_roster_summary;
         hud.frames_remaining=session.mission().frames_remaining();
         hud.score=session.owners()[0].score;
         session.units().for_each([&](battletanx::EntityId id,
@@ -655,6 +680,16 @@ int main(int argc, char** argv) {
                     battletanx::parse_team_spawn_table(*active_world_stream),
                     *campaign,settings,pak_path,smoke_ticks);
             if (result==WaveRunResult::quit) break;
+            if (result==WaveRunResult::selection_previous ||
+                result==WaveRunResult::selection_next) {
+                campaign->unit_type=battletanx::cycle_player_bundle(
+                    campaign->unit_type,
+                    result==WaveRunResult::selection_previous ? -1 : 1);
+                battletanx::write_controller_pak_record(
+                    pak_path,battletanx::serialize_campaign_record(*campaign));
+                std::cout << "Selected campaign lineup " << campaign->unit_type << '\n';
+                continue;
+            }
             if (result==WaveRunResult::retry) {
                 std::cout << "Restarting campaign wave "
                           << static_cast<unsigned>(wave->wave_index) << '\n';

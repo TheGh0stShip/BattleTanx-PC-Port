@@ -381,6 +381,11 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
             retail_text(pixels,width,height,assets.fonts[0],state.objective,
                         (width-objective_width)/2,365,scale,0xFFFFC040U);
         }
+        if (!state.lineup.empty() && !assets.fonts.empty()) {
+            const int lineup_width=retail_text_width(assets.fonts[0],state.lineup,1);
+            retail_text(pixels,width,height,assets.fonts[0],state.lineup,
+                        (width-lineup_width)/2,395,1,0xFFFFFFFFU);
+        }
     }
 
     const std::size_t filled=filled_health_segments(state.health,state.max_health);

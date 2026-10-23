@@ -92,6 +92,11 @@ RUNTIME_TEST(controller_roster_decodes_save_selection_record) {
     REQUIRE(roster->initial_event==22 && roster->secondary_event==23);
     REQUIRE(!decode_controller_roster(bytes,-1).has_value());
     REQUIRE(!decode_controller_roster(bytes,14).has_value());
+    REQUIRE(cycle_player_bundle(9,1)==0);
+    REQUIRE(cycle_player_bundle(0,-1)==9);
+    REQUIRE(cycle_player_bundle(0,1)==2);
+    REQUIRE(cycle_player_bundle(0,1,true)==1);
+    REQUIRE(cycle_player_bundle(99,0)==9);
     return true;
 }
 

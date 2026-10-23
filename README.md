@@ -180,11 +180,12 @@ loads its retail world and population data, and runs native battles with all
 three vehicle rosters, enemies, weapons, pickups, turrets, queen objectives,
 HUD, audio, mission results, respawning, Controller Pak progress updates, wave
 retry, retail mission briefing art and objective/result messages, and
-in-process progression to the next mission.
+in-process progression to the next mission. The briefing screen supports
+controller or keyboard D-pad lineup selection and saves it to the Controller Pak.
 
 Work still in progress includes:
 
-- Front-end menus, full briefing prose, chapter intermissions, and vehicle selection
+- Remaining front-end menus and chapter intermissions
 - Remaining objective presentation and uncommon queen/base interactions
 - Remaining scripted enemy behaviors, weapons, effects, and pickup cases
 - Complete music selection and uncommon material/rendering modes

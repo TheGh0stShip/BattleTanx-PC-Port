@@ -207,6 +207,17 @@ std::optional<ControllerRoster> decode_controller_roster(
     return roster;
 }
 
+std::int32_t cycle_player_bundle(
+    std::int32_t current,std::int32_t direction,bool bundle_one_unlocked) noexcept {
+    if (current<0 || current>9) current=9;
+    if (direction==0) return current;
+    const std::int32_t step=direction<0 ? -1 : 1;
+    do {
+        current=(current+step+10)%10;
+    } while (!bundle_one_unlocked && current==1);
+    return current;
+}
+
 std::optional<TeamSpawnTable> parse_team_spawn_table(std::span<const std::uint8_t> world_stream) {
     constexpr std::size_t entry_size=12U;
     if (world_stream.size()<4U) return std::nullopt;

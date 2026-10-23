@@ -53,6 +53,10 @@ struct ControllerRoster {
 
 [[nodiscard]] std::optional<ControllerRoster> decode_controller_roster(
     std::span<const std::uint8_t> table,std::int32_t index) noexcept;
+// poll_player_bundle_selection: the retail front end wraps selections 0..9 and
+// skips locked bundle 1 until its unlock flag is set.
+[[nodiscard]] std::int32_t cycle_player_bundle(
+    std::int32_t current,std::int32_t direction,bool bundle_one_unlocked=false) noexcept;
 
 struct TeamSpawnPoint {
     float x{}, z{};
