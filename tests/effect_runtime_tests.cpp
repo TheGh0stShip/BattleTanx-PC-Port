@@ -34,7 +34,28 @@ RUNTIME_TEST(variant_table_matches_retail_script_map) {
     REQUIRE((*script_for_variant(variant::tank_destroyed))[1].op==ScriptOp::wait);
     REQUIRE((*script_for_variant(variant::tank_destroyed))[1].arg0==128);
     REQUIRE(particle_def(muzzle_flash_def)->duration==96U);
+    REQUIRE(particle_def(0U)->scale_from==20);
+    REQUIRE(particle_def(0U)->scale_to==80);
+    REQUIRE(runtime_test::near(particle_render_scale(*particle_def(0U),0U),20.0F/1024.0F));
+    REQUIRE(runtime_test::near(particle_render_scale(*particle_def(0U),64U),50.0F/1024.0F));
+    REQUIRE(runtime_test::near(particle_render_scale(*particle_def(0U),128U),80.0F/1024.0F));
+    REQUIRE(runtime_test::near(color_ramp_render_scale(*particle_def(18U),0U),40.0F));
     REQUIRE(particle_def(63U)==nullptr);
+    return true;
+}
+
+RUNTIME_TEST(render_queue_uses_retail_particle_models_and_interpolated_scale) {
+    auto fx=make();
+    REQUIRE(fx->spawn_particle(EffectKind::particle,0U,1.0F,2.0F,3.0F,0U).status==SpawnStatus::spawned);
+    REQUIRE(fx->spawn_particle(EffectKind::ramp,18U,4.0F,5.0F,6.0F,0U).status==SpawnStatus::spawned);
+    fx->update(64U);
+    EffectRenderQueue queue(8U);
+    fx->collect(queue);
+    REQUIRE(queue.events().size()==2U);
+    REQUIRE(queue.events()[0].model_slot==models::scripted_particle);
+    REQUIRE(runtime_test::near(queue.events()[0].scale,50.0F/1024.0F));
+    REQUIRE(queue.events()[1].model_slot==models::color_ramp_particle);
+    REQUIRE(runtime_test::near(queue.events()[1].scale,172.0F));
     return true;
 }
 

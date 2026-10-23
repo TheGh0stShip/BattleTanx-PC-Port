@@ -745,8 +745,16 @@ WaveRunResult run_platform_diagnostic(battletanx::Platform& platform,
             }
             const auto angle=static_cast<std::uint16_t>(
                 game_tick*0x500U+static_cast<std::uint16_t>(effect.index)*0x800U);
-            draw.items.push_back({set,
-                battletanx::yaw_translation_matrix(angle,effect.x,y,effect.z,angles),3U,0});
+            auto transform=battletanx::yaw_translation_matrix(angle,effect.x,y,effect.z,angles);
+            if (effect.scale!=1.0F) {
+                // draw_effect_particle scales the billboard's X/Z axes while
+                // retaining its vertical axis. Color ramps use their recovered
+                // keyed-billboard scale, but still lack per-instance colors.
+                for (const std::size_t row:{0U,2U})
+                    for (std::size_t column=0U; column<3U; ++column)
+                        transform[row*4U+column]*=effect.scale;
+            }
+            draw.items.push_back({set,transform,3U,0});
         }
         const auto pickup_angle=static_cast<std::uint16_t>(game_tick*0x600U);
         for (const auto& pickup:session.pickups()) {
