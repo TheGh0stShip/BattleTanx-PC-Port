@@ -91,7 +91,7 @@ RUNTIME_TEST(controller_roster_decodes_save_selection_record) {
     REQUIRE(roster->kinds[0]==1U && roster->kinds[1]==2U);
     REQUIRE(roster->initial_event==22 && roster->secondary_event==23);
     REQUIRE(!decode_controller_roster(bytes,-1).has_value());
-    REQUIRE(!decode_controller_roster(bytes,13).has_value());
+    REQUIRE(!decode_controller_roster(bytes,14).has_value());
     return true;
 }
 

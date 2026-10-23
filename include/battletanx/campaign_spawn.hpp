@@ -37,7 +37,7 @@ inline constexpr std::size_t team_spawn_table_offset=0x18CU;  // world header +0
 inline constexpr std::uint8_t owned_object_entity_kind=0x1BU;
 inline constexpr std::uint8_t marker_lineup_base=10U;         // marker kind >= 10: lineup[kind-10]
 inline constexpr std::int32_t demo_game_kind=8;
-inline constexpr std::size_t controller_roster_count=13U;
+inline constexpr std::size_t controller_roster_count=14U;
 inline constexpr std::size_t controller_roster_size=72U;
 inline constexpr std::size_t controller_roster_rom_offset=0xB62D8U; // D_801262D8
 
