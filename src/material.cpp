@@ -27,6 +27,17 @@ std::uint32_t rgba_bytes_to_host(std::uint32_t value) {
     return ((value&0xFFU)<<24U)|(value>>8U);
 }
 
+std::size_t animation_frame_index(const NativeMaterial& material,std::int8_t phase,
+                                  std::uint64_t animation_tick) {
+    if (phase>=0) {
+        return static_cast<std::uint8_t>(phase)%material.animation_frames.size();
+    }
+    const std::size_t period=material.animation_period==0U ?
+        material.animation_frames.size() : material.animation_period;
+    const std::uint64_t time=phase==-1 ? animation_tick : animation_tick>>1U;
+    return static_cast<std::size_t>(time%period);
+}
+
 } // namespace
 
 NativeMaterial decode_material_blob(std::span<const std::uint8_t> blob,
@@ -181,6 +192,35 @@ NativeMaterial decode_material_blob(std::span<const std::uint8_t> blob,
     }
     if (display_list_end==0U) throw std::runtime_error("material has no end command");
 
+    const std::uint32_t frame_offset=animation&0x7FFU;
+    const std::uint32_t frame_count=animation>>11U;
+    material.animation_period=static_cast<std::uint8_t>(frame_count);
+    for (std::uint32_t frame=0U; frame<frame_count; ++frame) {
+        const std::uint32_t offset=frame_offset+frame*8U;
+        const auto command=BigEndianView(BlobView(blob,{offset,8U}).bytes());
+        const std::uint32_t word0=command.u32(0U);
+        const std::uint32_t word1=command.u32(4U);
+        const std::uint32_t opcode=word0>>24U;
+        if (opcode!=0xF2U && opcode!=0xF5U) {
+            throw std::runtime_error("material animation uses an unsupported command");
+        }
+        material.animation_frames.push_back({word0,word1});
+    }
+    if (frame_count==1U && !material.animation_frames.empty() &&
+        (material.animation_frames.front().word0>>24U)==0xF2U) {
+        // Fixed unit phases address the scroll-command bank directly. Retail
+        // treads use all 16 phase values even though automatic cycling is off.
+        for (std::uint32_t frame=1U; frame<16U; ++frame) {
+            const std::uint32_t offset=frame_offset+frame*8U;
+            if (offset>blob.size() || blob.size()-offset<8U) break;
+            const auto command=BigEndianView(blob.subspan(offset,8U));
+            const std::uint32_t word0=command.u32(0U);
+            const std::uint32_t word1=command.u32(4U);
+            if ((word0>>24U)!=0xF2U) break;
+            material.animation_frames.push_back({word0,word1});
+        }
+    }
+
     if (image_load) {
         if (!have_render_tile || !have_tile_size) {
             throw std::runtime_error("textured material has no render tile");
@@ -199,15 +239,23 @@ NativeMaterial decode_material_blob(std::span<const std::uint8_t> blob,
         } else if (tile_format==0U && tile_size==3U) {
             material.texture=decode_rgba32_texture(pixels,material.width,material.height);
         } else if (tile_format==2U && tile_size==0U) {
-            const auto& palette_load=palette_loads[render_palette];
-            if (!palette_load || palette_load->bytes!=32U ||
-                palette_load->offset<display_list_end || (palette_load->offset&7U)!=0U) {
-                throw std::runtime_error("CI4 material has an invalid palette");
+            const auto decode_palette=[&](std::uint32_t palette_index) {
+                const auto& palette_load=palette_loads[palette_index];
+                if (!palette_load || palette_load->bytes!=32U ||
+                    palette_load->offset<display_list_end ||
+                    (palette_load->offset&7U)!=0U) {
+                    throw std::runtime_error("CI4 material has an invalid palette");
+                }
+                const auto palette=BlobView(
+                    blob,{palette_load->offset,palette_load->bytes}).bytes();
+                return decode_ci4_texture(pixels,palette,material.width,material.height);
+            };
+            material.texture=decode_palette(render_palette);
+            for (const auto& frame:material.animation_frames) {
+                if ((frame.word0>>24U)!=0xF5U) continue;
+                material.animation_textures.push_back(
+                    decode_palette((frame.word1>>20U)&15U));
             }
-            const auto palette=BlobView(
-                blob,{palette_load->offset,palette_load->bytes}).bytes();
-            material.texture=decode_ci4_texture(
-                pixels,palette,material.width,material.height);
         } else if (tile_format==4U && tile_size==0U) {
             material.texture=decode_i4_texture(pixels,material.width,material.height);
         } else if (tile_format==4U && tile_size==1U) {
@@ -221,19 +269,6 @@ NativeMaterial decode_material_blob(std::span<const std::uint8_t> blob,
         }
     }
 
-    const std::uint32_t frame_offset=animation&0x7FFU;
-    const std::uint32_t frame_count=animation>>11U;
-    for (std::uint32_t frame=0U; frame<frame_count; ++frame) {
-        const std::uint32_t offset=frame_offset+frame*8U;
-        const auto command=BigEndianView(BlobView(blob,{offset,8U}).bytes());
-        const std::uint32_t word0=command.u32(0U);
-        const std::uint32_t word1=command.u32(4U);
-        const std::uint32_t opcode=word0>>24U;
-        if (opcode!=0xF2U && opcode!=0xF5U) {
-            throw std::runtime_error("material animation uses an unsupported command");
-        }
-        material.animation_frames.push_back({word0,word1});
-    }
     return material;
 }
 
@@ -241,17 +276,23 @@ MaterialTileOrigin resolve_material_tile_origin(
     const NativeMaterial& material,std::int8_t phase,std::uint64_t animation_tick) noexcept {
     MaterialTileOrigin origin{material.tile_left,material.tile_top};
     if (material.animation_frames.empty()) return origin;
-    std::size_t frame=0U;
-    if (phase>=0) frame=static_cast<std::uint8_t>(phase);
-    else if (phase==-1) frame=static_cast<std::size_t>(animation_tick);
-    else frame=static_cast<std::size_t>(animation_tick>>1U);
-    frame%=material.animation_frames.size();
+    const std::size_t frame=animation_frame_index(material,phase,animation_tick);
     const auto& command=material.animation_frames[frame];
     if ((command.word0>>24U)==0xF2U && ((command.word1>>24U)&7U)==0U) {
         origin.left=static_cast<float>((command.word0>>12U)&0xFFFU)/4.0F;
         origin.top=static_cast<float>(command.word0&0xFFFU)/4.0F;
     }
     return origin;
+}
+
+const RgbaImage* resolve_material_texture(
+    const NativeMaterial& material,std::int8_t phase,std::uint64_t animation_tick) noexcept {
+    if (material.animation_textures.size()==material.animation_frames.size() &&
+        !material.animation_frames.empty()) {
+        const std::size_t frame=animation_frame_index(material,phase,animation_tick);
+        if (frame<material.animation_textures.size()) return &material.animation_textures[frame];
+    }
+    return material.texture ? &*material.texture : nullptr;
 }
 
 } // namespace battletanx

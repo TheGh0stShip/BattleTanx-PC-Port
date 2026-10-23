@@ -40,12 +40,16 @@ struct NativeMaterial {
     bool depth_write{};
     std::uint32_t primitive_rgba{0xFFFFFFFFU};
     std::uint32_t raw_render_mode{};
+    std::uint8_t animation_period{};
     std::vector<MaterialFrame> animation_frames;
+    std::vector<RgbaImage> animation_textures;
 };
 
 NativeMaterial decode_material_blob(std::span<const std::uint8_t> blob,
                                     std::uint16_t animation);
 MaterialTileOrigin resolve_material_tile_origin(
+    const NativeMaterial& material,std::int8_t phase,std::uint64_t animation_tick) noexcept;
+const RgbaImage* resolve_material_texture(
     const NativeMaterial& material,std::int8_t phase,std::uint64_t animation_tick) noexcept;
 
 } // namespace battletanx

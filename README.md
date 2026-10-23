@@ -74,7 +74,8 @@ geometry pool bounds, and decodes the retail vertex/triangle command stream.
 Level-one assets are cached as host meshes and materials. Supported texture
 decoders cover the five formats used by these assets: RGBA16, CI4 with TLUT,
 RGBA32, I4, and I8. Recovered fixed, full-speed, and half-speed material-frame
-selection drives texture scrolling, including independent tank tread phases.
+selection drives texture scrolling and CI4 palette animation, including
+independent tank tread phases.
 No original display commands are executed at runtime.
 
 `--window` runs the native gameplay bring-up through the pinned SDL2 host

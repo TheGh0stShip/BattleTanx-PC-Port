@@ -217,12 +217,20 @@ int main() {
         animated.animation_frames={
             {0xF200400CU,0U},
             {0xF2008010U,0U}};
+        animated.animation_period=2U;
         const auto fixed=battletanx::resolve_material_tile_origin(animated,1,0U);
         CHECK(fixed.left==2.0F && fixed.top==4.0F);
         const auto looping=battletanx::resolve_material_tile_origin(animated,-1,2U);
         CHECK(looping.left==1.0F && looping.top==3.0F);
         const auto half_speed=battletanx::resolve_material_tile_origin(animated,-2,3U);
         CHECK(half_speed.left==2.0F && half_speed.top==4.0F);
+        animated.texture=battletanx::RgbaImage{1U,1U,{0xFF000001U}};
+        animated.animation_textures={
+            {1U,1U,{0xFF000002U}},{1U,1U,{0xFF000003U}}};
+        CHECK(battletanx::resolve_material_texture(animated,-1,0U)->pixels[0]==
+              0xFF000002U);
+        CHECK(battletanx::resolve_material_texture(animated,-1,1U)->pixels[0]==
+              0xFF000003U);
     }
 
     {

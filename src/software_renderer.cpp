@@ -95,27 +95,26 @@ int wrapped_coordinate(float coordinate,std::uint32_t size,TextureWrap wrap) {
     return value<extent ? value : period-1-value;
 }
 
-std::uint32_t texel(const NativeMaterial& material,int x,int y) {
-    const auto& image=*material.texture;
+std::uint32_t texel(const NativeMaterial& material,const RgbaImage& image,int x,int y) {
     const int wrapped_x=wrapped_coordinate(static_cast<float>(x),image.width,material.wrap_s);
     const int wrapped_y=wrapped_coordinate(static_cast<float>(y),image.height,material.wrap_t);
     return image.pixels[static_cast<std::size_t>(wrapped_y)*image.width+
                         static_cast<std::size_t>(wrapped_x)];
 }
 
-std::uint32_t sample(const NativeMaterial& material,const MaterialTileOrigin& origin,
-                     float u,float v) {
-    if (!material.texture) return material.primitive_rgba;
+std::uint32_t sample(const NativeMaterial& material,const RgbaImage* image,
+                     const MaterialTileOrigin& origin,float u,float v) {
+    if (image==nullptr) return material.primitive_rgba;
     u-=origin.left;
     v-=origin.top;
     const int x=static_cast<int>(std::floor(u));
     const int y=static_cast<int>(std::floor(v));
-    if (!material.bilinear) return texel(material,x,y);
+    if (!material.bilinear) return texel(material,*image,x,y);
     const float fraction_x=u-static_cast<float>(x);
     const float fraction_y=v-static_cast<float>(y);
     const std::array<std::uint32_t,4> samples{
-        texel(material,x,y),texel(material,x+1,y),
-        texel(material,x,y+1),texel(material,x+1,y+1)};
+        texel(material,*image,x,y),texel(material,*image,x+1,y),
+        texel(material,*image,x,y+1),texel(material,*image,x+1,y+1)};
     std::uint32_t output=0U;
     for (const unsigned shift:{0U,8U,16U,24U}) {
         const float top=((samples[0]>>shift)&0xFFU)*(1.0F-fraction_x)+
@@ -170,6 +169,7 @@ std::uint32_t blend_source_over(std::uint32_t source,std::uint32_t destination) 
 
 void rasterize_triangle(int width,int height,std::vector<std::uint32_t>& color,
                         std::vector<float>& depth,const NativeMaterial& material,
+                        const RgbaImage* texture,
                         const MaterialTileOrigin& tile_origin,
                         const std::array<ClipVertex,3>& clip_vertices) {
     std::array<RasterVertex,3> vertices{};
@@ -226,7 +226,7 @@ void rasterize_triangle(int width,int height,std::vector<std::uint32_t>& color,
                 interpolate(&RasterVertex::b_over_w),
                 interpolate(&RasterVertex::a_over_w));
             const std::uint32_t output=combine(
-                material,sample(material,tile_origin,u,v),shade);
+                material,sample(material,texture,tile_origin,u,v),shade);
             if (material.alpha==AlphaMode::edge_test && (output>>24U)<128U) continue;
             if (material.alpha==AlphaMode::blend) {
                 if ((output>>24U)==0U) continue;
@@ -301,6 +301,8 @@ void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
                 const auto& material=assets.materials()[part.material];
                 const auto tile_origin=resolve_material_tile_origin(
                     material,item.animation_phase,list.animation_tick);
+                const auto* texture=resolve_material_texture(
+                    material,item.animation_phase,list.animation_tick);
                 for (std::size_t triangle=0U; triangle+2U<mesh.indices.size(); triangle+=3U) {
                     std::array<ClipVertex,3> input{};
                     bool finite=true;
@@ -322,7 +324,7 @@ void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
                     ClipPolygon polygon{};
                     const std::size_t vertex_count=clip_view_volume(input,polygon);
                     for (std::size_t fan=1U; fan+1U<vertex_count; ++fan) {
-                        rasterize_triangle(width_,height_,color_,depth_,material,tile_origin,
+                        rasterize_triangle(width_,height_,color_,depth_,material,texture,tile_origin,
                             {polygon[0],polygon[fan],polygon[fan+1U]});
                     }
                 }
