@@ -670,6 +670,17 @@ void Bridge::clear_events(BattleSession& session) noexcept {
     deployable_events_.clear();
 }
 
+std::vector<queen_world::QueenView> Bridge::queen_views() const {
+    std::vector<queen_world::QueenView> views;
+    if (!queen_) return views;
+    views.reserve(queen_handles_.size());
+    for (const queen_world::QueenHandle handle : queen_handles_) {
+        queen_world::QueenView view{};
+        if (queen_->view(handle,view)) views.push_back(view);
+    }
+    return views;
+}
+
 TickReport Bridge::tick(BattleSession& session,const SessionInput& input) {
     TickReport report;
     routed_.clear();

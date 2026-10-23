@@ -230,6 +230,7 @@ public:
     void clear_events(BattleSession& session) noexcept;
 
     [[nodiscard]] const queen_world::QueenWorld* queens() const noexcept { return queen_ ? &*queen_ : nullptr; }
+    [[nodiscard]] std::vector<queen_world::QueenView> queen_views() const;
     [[nodiscard]] const placed::World& placed_world() const noexcept { return placed_; }
     [[nodiscard]] const spawner_runtime::SpawnerSet& spawners() const noexcept { return spawners_; }
     [[nodiscard]] const deployables::DeployablesState& deployable_state() const noexcept { return deployables_; }

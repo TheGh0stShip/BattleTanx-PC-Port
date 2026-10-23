@@ -5,6 +5,7 @@
 #include "battletanx/camera.hpp"
 #include "battletanx/campaign_catalog.hpp"
 #include "battletanx/campaign_briefing.hpp"
+#include "battletanx/campaign_battle_bridge.hpp"
 #include "battletanx/campaign_record.hpp"
 #include "battletanx/campaign_spawn.hpp"
 #include "battletanx/controller_pak.hpp"
@@ -14,6 +15,7 @@
 #include "battletanx/level.hpp"
 #include "battletanx/level_spawns.hpp"
 #include "battletanx/model.hpp"
+#include "battletanx/owner_profiles.hpp"
 #include "battletanx/pc_settings.hpp"
 #include "battletanx/platform.hpp"
 #include "battletanx/resource.hpp"
@@ -156,9 +158,44 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
     session_config.mission.game_kind=static_cast<std::uint32_t>(wave.game_kind);
     session_config.mission.countdown_unit=wave.countdown_unit;
     session_config.combat.unlimited_ammo=campaign.unlimited_ammo.enabled();
+    const auto world_collision=battletanx::level_world_collision(world,navigation,angles);
+    battletanx::campaign_bridge::BridgeConfig bridge_config;
+    bridge_config.game_kind=wave.game_kind;
+    bridge_config.game_mode=wave.game_kind;
+    bridge_config.world=world_collision;
+    for (std::size_t owner=0U; owner<battletanx::spawn_owner_count; ++owner) {
+        bridge_config.spawner_owners[owner].budget=spawn_plan->owners[owner].reserve;
+        bridge_config.spawner_owners[owner].gate_open=true;
+        const auto group=std::min<std::size_t>(static_cast<std::size_t>(launch.skill_group),
+                                               battletanx::campaign_skill_groups-1U);
+        const auto turret_owner=battletanx::owner_profiles::make_turret_owner(
+            wave.owners[owner].skills[group],spawn_input.owners[owner].computer,
+            static_cast<std::uint32_t>(campaign.difficulty));
+        bridge_config.turret_owners[owner]=turret_owner.config;
+    }
+    if (wave.game_kind==3 || wave.game_kind==4 || wave.game_kind==6) {
+        battletanx::queen_world::Config queen_config;
+        queen_config.game_kind=static_cast<std::uint32_t>(wave.game_kind);
+        queen_config.owner_count=static_cast<std::uint8_t>(wave.owner_count);
+        queen_config.slot_rank=spawn_plan->slot_rank;
+        for (std::size_t owner=0U; owner<battletanx::spawn_owner_count; ++owner) {
+            queen_config.owners[owner].present=spawn_plan->owners[owner].present;
+            queen_config.owners[owner].team=spawn_plan->owners[owner].team;
+        }
+        bridge_config.queen=queen_config;
+    }
+    battletanx::campaign_bridge::Bridge bridge(std::move(bridge_config),angles);
+    if (bridge.error()!=battletanx::campaign_bridge::CreateError::none)
+        throw std::runtime_error("campaign bridge objective configuration failed");
+    for (const auto& object:battletanx::queen_level_objects(*spawn_plan,world))
+        static_cast<void>(bridge.place_queen_object(object));
+    const auto objective_markers=battletanx::objective_marker_entries(*spawn_plan,world);
+    static_cast<void>(bridge.place_markers(objective_markers,1U));
+    bridge.finish_queen_placement();
+
     battletanx::BattleSession session(
         session_config,angles,battletanx::level_unit_motion(world,navigation,angles),
-        battletanx::level_world_collision(world,navigation,angles),
+        world_collision,
         battletanx::level_route_planner(navigation));
     for (std::size_t owner=0U; owner<battletanx::spawn_owner_count; ++owner) {
         if (!spawn_plan->owners[owner].present) continue;
@@ -182,26 +219,13 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             spawn_plan->owners[owner].team,spawn_input.owners[owner].computer,
             std::max<std::uint8_t>(count,1U),
             static_cast<std::int16_t>(std::max(spawn_plan->owners[owner].reserve,0)),false,
-            scale,scale,wave.game_kind==3 || wave.game_kind==6,
+            scale,scale,bridge.queens()!=nullptr && bridge.queens()->has_base(static_cast<std::uint8_t>(owner)),
             battletanx::owner_difficulty_from_profile(profile),
             owner==0U ? launch.player_score : wave.owners[owner].initial_score});
-        session.set_spawner_budget(
-            static_cast<std::uint8_t>(owner),spawn_plan->owners[owner].reserve);
         if (!spawn_plan->respawn_points[owner].points.empty()) {
             const auto& point=spawn_plan->respawn_points[owner].points.front();
             session.set_respawn_point(static_cast<std::uint8_t>(owner),
                                       {point.x,point.z,point.heading});
-        }
-    }
-    if (wave.game_kind==3 || wave.game_kind==4 || wave.game_kind==6) {
-        for (const auto& item:world.items) {
-            if (item.type<11 || item.type>14) continue;
-            const std::size_t team_slot=static_cast<std::size_t>(item.type-11);
-            const std::uint8_t owner=spawn_plan->slot_rank[team_slot];
-            if (!session.add_queen_base(owner,item.x,item.z)) continue;
-        }
-        if ((wave.game_kind==3 || wave.game_kind==6) && session.queens().empty()) {
-            throw std::runtime_error("campaign queen objective has no base placements");
         }
     }
     std::optional<battletanx::EntityId> player_id;
@@ -213,12 +237,14 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
     }
     if (!player_id) throw std::runtime_error("failed to spawn the player tank");
     for (const auto& planned:spawn_plan->spawners) {
-        if (!session.add_spawner(planned.definition)) {
+        const auto error=bridge.add_spawner(
+            planned.definition,planned.definition.linked ? std::optional<std::int32_t>{1} : std::nullopt);
+        if (error) {
             throw std::runtime_error("failed to register a planned campaign spawner");
         }
     }
     for (const auto& placement:spawn_plan->owned_objects) {
-        if (!session.add_turret(placement)) {
+        if (!bridge.spawn_turret(battletanx::owned_object_turret_spawn(placement),session)) {
             throw std::runtime_error("failed to register a planned campaign turret");
         }
     }
@@ -273,7 +299,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
         const auto target_tick=smoke_ticks!=0U ? game_tick+1U : battletanx::fixed_rate_tick(
             static_cast<std::uint64_t>(elapsed),ticks_per_second);
         while (game_tick<target_tick) {
-            session.step(session_input);
+            static_cast<void>(bridge.tick(session,session_input));
             for (const auto& event:session.gameplay_events()) {
                 if (event.kind==battletanx::GameplayEventKind::unit_damaged && event.owner==0U) {
                     platform->rumble(0U,std::clamp(static_cast<float>(event.value)/40.0F,0.2F,1.0F),250U);
@@ -316,7 +342,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                     settings.master_volume*settings.effects_volume*
                     static_cast<float>(campaign.sfx_volume)/7.0F);
             }
-            session.clear_events();
+            bridge.clear_events(session);
             ++game_tick;
             session_input.drive.fire_pressed=false;
             session_input.drive.special_pressed=false;
@@ -395,20 +421,20 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             }
             draw.items.push_back({assets.set_base()+models->shadow_slot,body,5U,0});
         });
-        for (const auto& turret:session.turrets()) {
-            if (turret.removed || (turret.flags&battletanx::turret_rebuilding)!=0U ||
-                turret.type>=turret_models.size()) continue;
+        for (const auto& turret:bridge.placed_world().snapshots()) {
+            if (!turret.active || turret.destroyed || turret.kind!=battletanx::placed::Kind::turret ||
+                turret.subtype>=turret_models.size()) continue;
             const auto ground=terrain.sample(turret.x,turret.z);
             const float y=ground ? ground->height : 0.0F;
             auto transform=battletanx::yaw_translation_matrix(
                 turret.heading,turret.x,y,turret.z,angles);
-            const float scale=battletanx::turret_scale[turret.type];
+            const float scale=turret.scale;
             for (std::size_t row=0U; row<3U; ++row) {
                 for (std::size_t column=0U; column<3U; ++column) {
                     transform[row*4U+column]*=scale;
                 }
             }
-            draw.items.push_back({assets.set_base()+turret_models[turret.type],transform,3U,0});
+            draw.items.push_back({assets.set_base()+turret_models[turret.subtype],transform,3U,0});
         }
         session.projectiles().for_each(
             [&](battletanx::EntityId,const battletanx::WeaponProjectile& shell) {
@@ -436,8 +462,8 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                 battletanx::yaw_translation_matrix(
                     pickup_angle,pickup.x,pickup_y,pickup.z,angles),3U,0});
         }
-        for (const auto& queen:session.queens()) {
-            if (queen.state==battletanx::QueenState::carried ||
+        for (const auto& queen:bridge.queen_views()) {
+            if (queen.state==battletanx::queen_world::QueenState::carried ||
                 queen.home_owner>=session.owners().size()) continue;
             const std::uint8_t team=session.owners()[queen.home_owner].team;
             if (team>3U) continue;
