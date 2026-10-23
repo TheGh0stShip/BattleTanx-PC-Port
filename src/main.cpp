@@ -81,7 +81,8 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                              std::optional<battletanx::TeamSpawnTable> team_spawns,
                              battletanx::CampaignRecord campaign,
                              const battletanx::PcSettings& settings,
-                             const std::filesystem::path& pak_path) {
+                             const std::filesystem::path& pak_path,
+                             std::uint64_t smoke_ticks=0U) {
     auto platform=battletanx::Platform::create("BattleTanx native source port",settings);
     platform->set_sound_bank(sounds);
     platform->set_music_track(music,settings.master_volume*settings.music_volume*
@@ -212,6 +213,10 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
     auto terrain_sample=terrain.sample(spawn_plan->player.x,spawn_plan->player.z);
     battletanx::PlayerTank tank;
     battletanx::sync_player_tank_from_unit(tank,*session.units().get(*player_id));
+    const float initial_player_x=tank.x;
+    const float initial_player_z=tank.z;
+    const auto initial_primary_ammo=session.units().get(*player_id)->ammo[
+        session.units().get(*player_id)->primary_weapon.kind];
     std::cout << "Built native terrain surface: " << terrain.triangle_count()
               << " triangles, player height "
               << (terrain_sample ? terrain_sample->height : 0.0F) << '\n';
@@ -225,11 +230,20 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
         session_input.drive=input;
         session_input.start_pressed=(pad.pressed&0x1000U)!=0U;
         session_input.advance=(pad.pressed&(0x8000U|0x1000U))!=0U;
+        if (smoke_ticks!=0U) {
+            session_input.advance=game_tick==0U;
+            if (game_tick>=130U) {
+                session_input.drive.throttle=80.0F;
+                session_input.drive.rotation=game_tick<180U ? 18.0F : -12.0F;
+                session_input.drive.fire=true;
+                session_input.drive.fire_pressed=game_tick==130U;
+            }
+        }
         const bool advance_requested=session_input.advance;
         previous=current;
         const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now()-clock_start).count();
-        const auto target_tick=battletanx::fixed_rate_tick(
+        const auto target_tick=smoke_ticks!=0U ? game_tick+1U : battletanx::fixed_rate_tick(
             static_cast<std::uint64_t>(elapsed),ticks_per_second);
         while (game_tick<target_tick) {
             session.step(session_input);
@@ -434,13 +448,28 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             verified_native_frame=true;
         }
         platform->present(renderer.pixels(),battletanx::native_width,battletanx::native_height);
+        if (smoke_ticks!=0U && game_tick>=smoke_ticks) {
+            const auto id=session.owner_unit(0U);
+            const auto* player=id ? session.units().get(*id) : nullptr;
+            if (player==nullptr || session.mission().state()!=battletanx::MatchState::live)
+                throw std::runtime_error("native smoke run did not reach live gameplay");
+            if (player->x==initial_player_x && player->z==initial_player_z)
+                throw std::runtime_error("native smoke run did not move the player unit");
+            if (player->ammo[player->primary_weapon.kind]>=initial_primary_ammo)
+                throw std::runtime_error("native smoke run did not fire the primary weapon");
+            std::cout << "Native smoke run passed: " << game_tick << " ticks, checksum "
+                      << session.checksum() << '\n';
+            return WaveRunResult::quit;
+        }
         if (advance_requested && session.mission().state()==battletanx::MatchState::round_over) {
             return progress_saved ? WaveRunResult::advance : WaveRunResult::retry;
         }
         const auto next_tick_nanoseconds=static_cast<std::int64_t>(
             ((game_tick+1U)*UINT64_C(1000000000)+ticks_per_second-1U)/ticks_per_second);
-        std::this_thread::sleep_until(
-            clock_start+std::chrono::nanoseconds(next_tick_nanoseconds));
+        if (smoke_ticks==0U) {
+            std::this_thread::sleep_until(
+                clock_start+std::chrono::nanoseconds(next_tick_nanoseconds));
+        }
     }
     return WaveRunResult::quit;
 }
@@ -457,21 +486,24 @@ int main(int argc, char** argv) {
         if (!std::filesystem::exists(settings_path)) settings.save(settings_path);
 
         bool show_window=true;
+        std::uint64_t smoke_ticks=0U;
         std::filesystem::path rom_path;
         if (argc==1 && !settings.last_rom_path.empty()) {
             rom_path=battletanx::path_from_utf8(settings.last_rom_path);
         } else if (argc==2) {
             rom_path=argv[1];
         } else if (argc==3 && (std::string_view(argv[1])=="--window" ||
-                              std::string_view(argv[1])=="--validate")) {
+                              std::string_view(argv[1])=="--validate" ||
+                              std::string_view(argv[1])=="--smoke")) {
             show_window=std::string_view(argv[1])!="--validate";
+            if (std::string_view(argv[1])=="--smoke") smoke_ticks=240U;
             rom_path=argv[2];
         } else {
-            std::cerr << "usage: BattleTanx [--validate|--window] /path/to/BattleTanx.z64\n";
+            std::cerr << "usage: BattleTanx [--validate|--window|--smoke] /path/to/BattleTanx.z64\n";
             return 2;
         }
         if (rom_path.empty()) {
-            std::cerr << "usage: BattleTanx [--validate|--window] /path/to/BattleTanx.z64\n";
+            std::cerr << "usage: BattleTanx [--validate|--window|--smoke] /path/to/BattleTanx.z64\n";
             return 2;
         }
         const auto pak_path=battletanx::Platform::controller_pak_path();
@@ -598,7 +630,7 @@ int main(int argc, char** argv) {
                     *active_world,*active_navigation,angles,bindings,active_assets,
                     sounds,*music,hud_assets,pickup_models,turret_models,roster_table,*wave,
                     battletanx::parse_team_spawn_table(*active_world_stream),
-                    *campaign,settings,pak_path);
+                    *campaign,settings,pak_path,smoke_ticks);
             if (result==WaveRunResult::quit) break;
             if (result==WaveRunResult::retry) {
                 std::cout << "Restarting campaign wave "

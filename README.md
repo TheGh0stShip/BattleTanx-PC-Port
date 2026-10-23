@@ -57,6 +57,12 @@ check a ROM without starting the game, use:
 BattleTanx --validate /path/to/BattleTanx.z64
 ```
 
+Maintainers can run a bounded native gameplay check with `--smoke`. It creates
+the campaign runtime, advances through the title and countdown, drives and
+fires the player vehicle, renders 240 frames, verifies the resulting state,
+prints a deterministic checksum, and exits. It still requires the supported
+retail ROM and writes only to the configured user-data directory.
+
 ## Supported ROM
 
 | Property | Required value |
@@ -170,14 +176,15 @@ Configure with `-DBATTLETANX_PORTABLE=ON` to include `portable.txt` and add a
 ## Project status
 
 The current build launches the campaign wave selected by the original save,
-loads its retail world and population data, and runs a native battle with tank
-movement, enemies, cannon combat, pickups, HUD, audio, mission results,
-respawning, and Controller Pak progress updates.
+loads its retail world and population data, and runs native battles with all
+three vehicle rosters, enemies, weapons, pickups, turrets, queen objectives,
+HUD, audio, mission results, respawning, Controller Pak progress updates, wave
+retry, and in-process progression to the next mission.
 
 Work still in progress includes:
 
-- Complete campaign flow, menus, intermissions, and level transitions
-- Full objective interactions for queen-based missions
+- Front-end menus, briefings, chapter intermissions, and vehicle selection
+- Remaining objective presentation and uncommon queen/base interactions
 - Remaining scripted enemy behaviors, weapons, effects, and pickup cases
 - Complete music selection and uncommon material/rendering modes
 - Broader playthrough, controller, platform, and long-session validation

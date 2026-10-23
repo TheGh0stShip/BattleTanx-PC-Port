@@ -47,11 +47,11 @@ does not execute cartridge code.
   behavior without reproducing the original address space. Straight-line route
   traversal uses serialized corner adjacency while preserving the retail
   248-edge termination bound.
-- The gameplay bring-up owns native player-tank and projectile state. It uses
-  the recovered controller, angle, planar-motion, and navigation rules without
-  reproducing cartridge pointers or executing original machine code. The
-  initial M1A1 slice uses its recovered retail drive constants; other vehicle
-  tables remain outside this slice.
+- The gameplay runtime owns native vehicle, projectile, pickup, turret, queen,
+  objective, and campaign state. It uses recovered controller, angle, motion,
+  navigation, combat, and roster rules without reproducing cartridge pointers
+  or executing original machine code. Tank, bike, and Goliath definitions and
+  render sets are selected from the verified retail data.
 - Controller actions are derived from the retail big-endian binding preset;
   host devices only populate the original pad representation.
 - The renderer-facing camera pose retains the tank follow offsets, yaw
@@ -83,4 +83,15 @@ the corresponding Linux and Windows facilities.
 
 The executable is not considered playable until it can enter and complete
 representative retail gameplay using only user-supplied ROM data.
+
+## Runtime validation
+
+`--validate` checks the ROM and all resource, world, navigation, geometry, and
+active-wave model boundaries without opening gameplay. The optional campaign
+audit builds population plans and resolves every required runtime model set for
+all 17 waves. `--smoke` is the bounded end-to-end gate: from a clean data
+directory it creates and verifies a Controller Pak, launches the first native
+campaign battle, dismisses the title, completes the countdown, moves and fires
+the player vehicle, renders 240 frames, and reports a deterministic state
+checksum before exiting.
 
