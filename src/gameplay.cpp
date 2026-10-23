@@ -1,5 +1,6 @@
 #include "battletanx/gameplay.hpp"
 #include "battletanx/big_endian.hpp"
+#include "battletanx/geometry.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -125,12 +126,15 @@ PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navi
 }
 
 void update_player_tank(PlayerTank& tank,const DriveInput& input,
-                        const NavigationLevel& navigation,const AngleTable& angles) {
+                        const WorldLevel& world,const NavigationLevel& navigation,
+                        const AngleTable& angles) {
     constexpr float frame_rate_scale=0.15F;
     constexpr float turn_acceleration=0.18F;
     constexpr float acceleration_scale=1.0F/100.0F;
     constexpr float grip=300.0F;
     constexpr float drag=250.0F;
+    const float previous_heading=tank.heading_degrees;
+    const float previous_turret=tank.turret_degrees;
     float steering=input.rotation;
     const float throttle=std::clamp(input.throttle,-200.0F,200.0F);
     if (tank.velocity_x<5.0F && tank.velocity_z<5.0F) steering*=1.5F;
@@ -155,13 +159,33 @@ void update_player_tank(PlayerTank& tank,const DriveInput& input,
     const NavigationVertex candidate{motion.x,motion.z};
     const auto trace=trace_navigation_segment(
         navigation,tank.navigation_triangle,from,candidate);
-    if (trace.stop==NavigationTraceStop::target) {
+    bool world_blocked=false;
+    const OrientedRect footprint{candidate.x,candidate.z,-35.0F,35.0F,-73.0F,81.0F,
+                                 degrees_to_angle(tank.heading_degrees)};
+    for (const auto& item:world.items) {
+        if (item.shape<0 || static_cast<std::size_t>(item.shape)>=world.shapes.size()) continue;
+        if (item.type!=1 && item.type!=19 && item.type!=26 && item.type!=27 && item.type!=30) {
+            continue;
+        }
+        const auto& shape=world.shapes[static_cast<std::size_t>(item.shape)];
+        const OrientedRect obstacle{item.x,item.z,static_cast<float>(shape.min_x),
+                                    static_cast<float>(shape.max_x),
+                                    static_cast<float>(shape.min_z),
+                                    static_cast<float>(shape.max_z),item.angle};
+        if (oriented_rects_overlap(footprint,obstacle,angles)) {
+            world_blocked=true;
+            break;
+        }
+    }
+    if (trace.stop==NavigationTraceStop::target && !world_blocked) {
         tank.x=candidate.x;
         tank.z=candidate.z;
         tank.velocity_x=motion.velocity_x;
         tank.velocity_z=motion.velocity_z;
         tank.navigation_triangle=trace.triangle;
     } else {
+        tank.heading_degrees=previous_heading;
+        tank.turret_degrees=previous_turret;
         tank.velocity_x=motion.velocity_x*-0.3F;
         tank.velocity_z=motion.velocity_z*-0.3F;
     }

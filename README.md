@@ -55,7 +55,9 @@ preset is decoded from the verified retail ROM and evaluated with the recovered
 analog/digital axis rules. The first native gameplay slice
 adds a player-tank state, navigation-constrained movement, and a single
 bounded projectile. The current M1A1 drive slice uses its recovered retail
-turn, acceleration, grip, and drag constants. The temporary top-down
+turn, acceleration, grip, drag, and rotated footprint. Static collision uses
+the recovered level-object type filter and each object's rotated level shape.
+The temporary top-down
 presentation remains bring-up code rather than a claim of complete retail
 gameplay.
 The original interpolated 16-bit angle behavior reads its 257-sample sine
@@ -72,8 +74,9 @@ player tank from the decoded retail
 group-zero spawn marker on open navigation data.
 Drive with the left stick or WASD and fire the current cannon shell with the
 left trigger or Left Shift. The default retail control preset keeps the turret
-aligned with the hull. Movement and projectile travel stop at navigation
-boundaries and blocked cells. Escape or closing the window exits.
+aligned with the hull. Movement stops at navigation boundaries, blocked cells,
+and registered static world shapes. Projectile collision still uses navigation
+boundaries as a bring-up approximation. Escape or closing the window exits.
 
 Up to four hot-pluggable SDL game controllers are assigned to ports in
 connection order. The left stick supplies the N64 analog stick, the D-pad and

@@ -22,8 +22,20 @@ struct RotatedRect {
     std::uint16_t angle{};
 };
 
+struct OrientedRect {
+    float origin_x{};
+    float origin_z{};
+    float min_x{};
+    float max_x{};
+    float min_z{};
+    float max_z{};
+    std::uint16_t angle{};
+};
+
 void rotated_rect_corners(const RotatedRect& rect,const AngleTable& angles,
                           std::array<PlanarPoint,4>& output);
+bool oriented_rects_overlap(const OrientedRect& first,const OrientedRect& second,
+                            const AngleTable& angles);
 
 } // namespace battletanx
 

@@ -81,7 +81,8 @@ InputBindings load_default_input_bindings(const Rom& rom);
 DriveInput translate_drive_input(const PlayerInput& input,const InputBindings& bindings);
 PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navigation);
 void update_player_tank(PlayerTank& tank,const DriveInput& input,
-                        const NavigationLevel& navigation,const AngleTable& angles);
+                        const WorldLevel& world,const NavigationLevel& navigation,
+                        const AngleTable& angles);
 bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
                                 const DriveInput& input,const NavigationLevel& navigation,
                                 const AngleTable& angles,std::int32_t game_tick);

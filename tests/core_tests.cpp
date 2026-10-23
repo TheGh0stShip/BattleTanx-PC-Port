@@ -247,6 +247,12 @@ int main() {
         CHECK(std::abs(rotated[0].z+1.0F)<0.000001F);
         CHECK(std::abs(rotated[2].x+2.0F)<0.000001F);
         CHECK(std::abs(rotated[2].z-1.0F)<0.000001F);
+        const battletanx::OrientedRect overlap_a{0.0F,0.0F,-2.0F,2.0F,-1.0F,1.0F,0};
+        const battletanx::OrientedRect overlap_b{2.5F,0.0F,-1.0F,1.0F,-1.0F,1.0F,
+                                                 0x4000U};
+        const battletanx::OrientedRect separate{5.0F,0.0F,-1.0F,1.0F,-1.0F,1.0F,0};
+        CHECK(battletanx::oriented_rects_overlap(overlap_a,overlap_b,angles));
+        CHECK(!battletanx::oriented_rects_overlap(overlap_a,separate,angles));
 
         battletanx::NavigationLevel drive_nav;
         drive_nav.vertices={{},{-1000.0F,-1000.0F},{-1000.0F,1000.0F},
@@ -270,8 +276,25 @@ int main() {
         const float start_x=tank.x;
         battletanx::DriveInput drive{};
         drive.throttle=80.0F;
-        battletanx::update_player_tank(tank,drive,drive_nav,angles);
+        battletanx::update_player_tank(tank,drive,drive_world,drive_nav,angles);
         CHECK(tank.x>start_x && tank.navigation_triangle==1U);
+        battletanx::WorldLevel collision_world;
+        battletanx::WorldItem wall;
+        wall.type=1;
+        wall.shape=0;
+        wall.z=95.0F;
+        collision_world.items.push_back(wall);
+        battletanx::WorldShape wall_shape;
+        wall_shape.min_x=-10;
+        wall_shape.max_x=10;
+        wall_shape.min_z=-10;
+        wall_shape.max_z=10;
+        collision_world.shapes.push_back(wall_shape);
+        battletanx::PlayerTank blocked_tank;
+        blocked_tank.navigation_triangle=1U;
+        battletanx::update_player_tank(
+            blocked_tank,drive,collision_world,drive_nav,angles);
+        CHECK(blocked_tank.z==0.0F && blocked_tank.velocity_z<0.0F);
         battletanx::PlayerProjectile projectile{};
         battletanx::DriveInput fire{};
         fire.fire=true;

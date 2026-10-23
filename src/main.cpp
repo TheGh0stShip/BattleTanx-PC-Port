@@ -70,7 +70,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         const auto pad=battletanx::translate_player_input(current[0],previous[0]);
         const auto input=battletanx::translate_drive_input(pad,bindings);
         previous=current;
-        battletanx::update_player_tank(tank,input,navigation,angles);
+        battletanx::update_player_tank(tank,input,world,navigation,angles);
         battletanx::try_fire_player_projectile(
             projectile,tank,input,navigation,angles,game_tick);
         battletanx::update_player_projectile(projectile,navigation);
