@@ -292,6 +292,7 @@ int main() {
         put_u32(world,0x24U+0x2DCU,0U);
         put_u32(world,0x24U+0x27CU,1U);
         put_u32(world,0x24U+0x280U,0xFFFFFFFFU);
+        put_u32(world,0x24U+0x284U+5U*4U,3U);
         put_u16(world,0x304U,1U);
         put_u16(world,0x306U,0U);
         world[0x318U]=0U;
@@ -319,6 +320,8 @@ int main() {
         put_u32(world,0xBCCU,8U);
         const auto parsed=battletanx::parse_world_level(world);
         CHECK(parsed.flags==0x12345678U);
+        CHECK(!parsed.bank_group.has_value());
+        CHECK(parsed.pickup_spawn_counts[5U]==3);
         CHECK(parsed.groups.size()==1U && parsed.groups[0].item_count==1U);
         CHECK(parsed.items.size()==1U && parsed.items[0].kind==7U);
         CHECK(parsed.items[0].x==1.0F && parsed.items[0].z==-2.5F);

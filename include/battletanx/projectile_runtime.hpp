@@ -44,6 +44,13 @@ struct WorldCollision {
     std::function<bool(float x,float z)> inside;
 };
 
+// Native collision adapter for a decoded retail level. Static object bounds
+// use the same blocking types as tank motion; navigation boundaries close the
+// playable world. The returned callbacks borrow all three arguments.
+[[nodiscard]] WorldCollision level_world_collision(const WorldLevel& world,
+                                                    const NavigationLevel& navigation,
+                                                    const AngleTable& angles);
+
 struct ProjectileContext {
     CombatContext& combat;
     ShellPool& shells;

@@ -19,9 +19,8 @@ namespace battletanx {
 //  * the placed-object loop (load_level_data.c, func_80088CF0) reads every
 //    other group. Only its spawner types (20/21) are interpreted here.
 //
-// WorldLevel does not keep header +0x280 (bank group index) nor +0x284
-// (s32 spawnCounts[22]); level.cpp reads +0x280 only to validate the group
-// count. The integrator supplies both through SpawnContext.
+// WorldLevel retains header +0x280 (bank group index) and +0x284
+// (s32 spawnCounts[22]) so the native runtime can reproduce this split.
 
 enum class SpawnSource : std::uint8_t {
     bank_unit_placement,      // bank type 22 (func_800A1408)

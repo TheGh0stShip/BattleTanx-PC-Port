@@ -4,6 +4,8 @@
 
 #include "runtime_test_support.hpp"
 
+#include <algorithm>
+
 namespace {
 using namespace battletanx;
 
@@ -250,6 +252,40 @@ RUNTIME_TEST(shell_expires_after_life_and_respects_world_range) {
     while (arena.shells.size()>0U) { update_shells(walled); ++updates; }
     REQUIRE(updates==3);
     REQUIRE(arena.sounds.events().back().sound_id==retail::sound_hit_other);
+    return true;
+}
+
+RUNTIME_TEST(level_collision_finds_nearest_static_shape_and_navigation_boundary) {
+    WorldLevel world;
+    world.shapes.push_back(WorldShape{1U,0U,-20,-10,20,10});
+    WorldItem wall;
+    wall.type=1;
+    wall.shape=0;
+    wall.z=300.0F;
+    world.items.push_back(wall);
+
+    NavigationLevel navigation;
+    navigation.vertices={{0.0F,0.0F},{-1000.0F,-1000.0F},
+                         {1000.0F,-1000.0F},{0.0F,1000.0F}};
+    NavigationTriangle unused;
+    NavigationTriangle ground;
+    ground.corners={NavigationCorner{1U,0U},NavigationCorner{2U,0U},NavigationCorner{3U,0U}};
+    navigation.triangles={unused,ground};
+    if (!navigation_point_inside_triangle(navigation,{0.0F,0.0F},1U)) {
+        std::swap(navigation.triangles[1].corners[1],navigation.triangles[1].corners[2]);
+    }
+    const AngleTable angles=reference_angle_table();
+    const WorldCollision collision=level_world_collision(world,navigation,angles);
+    const auto wall_hit=collision.segment(0.0F,0.0F,0.0F,900.0F);
+    REQUIRE(wall_hit && runtime_test::near(wall_hit->distance,290.0,1e-3));
+    REQUIRE(runtime_test::near(wall_hit->z,290.0,1e-3));
+
+    world.items.clear();
+    const WorldCollision boundary=level_world_collision(world,navigation,angles);
+    const auto edge_hit=boundary.segment(0.0F,0.0F,0.0F,2000.0F);
+    REQUIRE(edge_hit && runtime_test::near(edge_hit->z,1000.0,0.01));
+    REQUIRE(boundary.inside(0.0F,0.0F));
+    REQUIRE(!boundary.inside(0.0F,1500.0F));
     return true;
 }
 

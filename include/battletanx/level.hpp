@@ -72,6 +72,8 @@ struct WorldModelPart {
 struct WorldLevel {
     std::uint32_t flags{};
     std::uint32_t set_base{};
+    std::optional<std::size_t> bank_group;
+    std::array<std::int32_t,22> pickup_spawn_counts{};
     std::array<std::size_t,9> section_offsets{};
     std::vector<WorldGroup> groups;
     std::vector<WorldItem> items;

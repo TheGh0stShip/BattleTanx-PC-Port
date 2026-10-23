@@ -114,6 +114,13 @@ WorldLevel parse_world_level(std::span<const std::uint8_t> bytes) {
         (optional_group!=-1 ? 1U : 0U)!=counts[1]) {
         throw std::runtime_error("world group count disagrees with its section");
     }
+    if (optional_group>=0) result.bank_group=static_cast<std::size_t>(optional_group);
+    for (std::size_t index=0U; index<result.pickup_spawn_counts.size(); ++index) {
+        result.pickup_spawn_counts[index]=view.s32(header+0x284U+index*4U);
+        if (result.pickup_spawn_counts[index]<0) {
+            throw std::runtime_error("world pickup spawn count is negative");
+        }
+    }
     const std::size_t group_start=result.section_offsets[1];
     std::size_t covered_items=0U;
     result.groups.reserve(counts[1]);

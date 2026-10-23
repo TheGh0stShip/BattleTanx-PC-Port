@@ -7,6 +7,7 @@
 #include "battletanx/fixed_tick.hpp"
 #include "battletanx/lzari.hpp"
 #include "battletanx/level.hpp"
+#include "battletanx/level_spawns.hpp"
 #include "battletanx/model.hpp"
 #include "battletanx/platform.hpp"
 #include "battletanx/resource.hpp"
@@ -42,11 +43,20 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     const auto clock_start=std::chrono::steady_clock::now();
     const auto player_start=battletanx::spawn_player_tank(world,navigation);
     const auto terrain=battletanx::TerrainSurface::build(world,assets,angles);
+    battletanx::SpawnContext spawn_context;
+    spawn_context.game_mode=3;
+    spawn_context.bank_group=world.bank_group;
+    spawn_context.active_player_count=4;
+    const auto spawn_plan=battletanx::interpret_level_spawns(world,spawn_context);
+    std::cout << "Recovered level population: " << spawn_plan.units.size()
+              << " unit placements, " << spawn_plan.spawners.size()
+              << " spawners, " << spawn_plan.pickups.size() << " pickups\n";
     battletanx::SessionConfig session_config;
     session_config.rng_seed=0x42545831U;
     session_config.combat.unlimited_ammo=campaign.unlimited_ammo.enabled();
     battletanx::BattleSession session(
-        session_config,angles,battletanx::level_unit_motion(world,navigation,angles));
+        session_config,angles,battletanx::level_unit_motion(world,navigation,angles),
+        battletanx::level_world_collision(world,navigation,angles));
     session.add_owner(0U,battletanx::OwnerSetup{0U,false,1U,3,false});
     session.add_owner(1U,battletanx::OwnerSetup{1U,true,5U,0,false});
     const auto player_id=session.spawn_unit({
@@ -55,14 +65,23 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     if (!player_id) throw std::runtime_error("failed to spawn the player tank");
     session.set_respawn_point(0U,{player_start.x,player_start.z,
         battletanx::degrees_to_retail_angle(player_start.heading_degrees)});
-    const auto player_heading=battletanx::degrees_to_retail_angle(player_start.heading_degrees);
-    constexpr float enemy_start_distance=800.0F;
-    const float enemy_x=player_start.x+angles.sine(player_heading)*enemy_start_distance;
-    const float enemy_z=player_start.z+angles.cosine(player_heading)*enemy_start_distance;
-    const auto enemy_id=session.spawn_unit({
-        battletanx::retail::UnitKind::tank,1U,enemy_x,enemy_z,
-        static_cast<std::uint16_t>(player_heading+0x8000U),0U});
-    if (!enemy_id) throw std::runtime_error("failed to spawn the enemy tank");
+    for (const auto& spawn:spawn_plan.units) {
+        const auto enemy_id=session.spawn_unit({
+            battletanx::retail::UnitKind::tank,spawn.owner,spawn.x,spawn.z,
+            spawn.heading,0U});
+        if (!enemy_id) throw std::runtime_error("failed to spawn a placed enemy tank");
+    }
+    battletanx::PickupWeights pickup_weights;
+    std::uint16_t pickup_slot=0U;
+    for (const auto& placement:spawn_plan.pickups) {
+        battletanx::PickupRecord pickup;
+        pickup.id={pickup_slot++,1U};
+        pickup.kind=placement.kind;
+        pickup.x=placement.x;
+        pickup.z=placement.z;
+        if (session.add_pickup(pickup)) pickup_weights.register_permanent(pickup.kind);
+    }
+    session.set_pickup_weights(pickup_weights);
     auto terrain_sample=terrain.sample(player_start.x,player_start.z);
     auto tank=player_start;
     std::cout << "Built native terrain surface: " << terrain.triangle_count()

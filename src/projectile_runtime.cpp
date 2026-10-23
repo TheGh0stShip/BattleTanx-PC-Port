@@ -1,8 +1,11 @@
 #include "battletanx/projectile_runtime.hpp"
 
+#include "battletanx/geometry.hpp"
 #include "battletanx/runtime_math.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace battletanx {
 namespace {
@@ -33,7 +36,68 @@ std::optional<SegmentHit> world_segment(const WorldCollision& world,float x0,flo
     return world.segment(x0,z0,x1,z1);
 }
 
+bool projectile_blocking_type(std::int32_t type) noexcept {
+    return type==1 || type==19 || type==26 || type==27 || type==30;
+}
+
+float segment_length(float x0,float z0,float x1,float z1) noexcept {
+    return std::hypot(x1-x0,z1-z0);
+}
+
 } // namespace
+
+WorldCollision level_world_collision(const WorldLevel& world,const NavigationLevel& navigation,
+                                     const AngleTable& angles) {
+    WorldCollision collision;
+    collision.segment=[&world,&navigation,&angles](float x0,float z0,float x1,float z1)
+        -> std::optional<SegmentHit> {
+        const PlanarPoint begin{x0,z0};
+        const PlanarPoint end{x1,z1};
+        float best=std::numeric_limits<float>::infinity();
+        for (const WorldItem& item:world.items) {
+            if (!projectile_blocking_type(item.type) || item.shape<0 ||
+                static_cast<std::size_t>(item.shape)>=world.shapes.size()) continue;
+            const WorldShape& shape=world.shapes[static_cast<std::size_t>(item.shape)];
+            const auto fraction=segment_oriented_rect_hit_fraction(
+                begin,end,{item.x,item.z,static_cast<float>(shape.min_x),
+                           static_cast<float>(shape.max_x),static_cast<float>(shape.min_z),
+                           static_cast<float>(shape.max_z),item.angle},angles);
+            if (fraction) best=std::min(best,*fraction);
+        }
+
+        const std::uint16_t start=find_nearest_navigation_triangle(
+            navigation,NavigationVertex{x0,z0});
+        if (start!=0U && navigation_point_inside_triangle(
+                navigation,NavigationVertex{x0,z0},start)) {
+            const auto trace=trace_navigation_segment(
+                navigation,start,NavigationVertex{x0,z0},NavigationVertex{x1,z1});
+            if (trace.stop!=NavigationTraceStop::target) {
+                float inside=0.0F;
+                float outside=1.0F;
+                for (int iteration=0; iteration<20; ++iteration) {
+                    const float middle=(inside+outside)*0.5F;
+                    const NavigationVertex point{
+                        x0+(x1-x0)*middle,z0+(z1-z0)*middle};
+                    const auto partial=trace_navigation_segment(
+                        navigation,start,NavigationVertex{x0,z0},point);
+                    if (partial.stop==NavigationTraceStop::target) inside=middle;
+                    else outside=middle;
+                }
+                best=std::min(best,outside);
+            }
+        }
+        if (!std::isfinite(best)) return std::nullopt;
+        const float hit_x=x0+(x1-x0)*best;
+        const float hit_z=z0+(z1-z0)*best;
+        return SegmentHit{segment_length(x0,z0,hit_x,hit_z),hit_x,hit_z};
+    };
+    collision.inside=[&navigation](float x,float z) {
+        const NavigationVertex point{x,z};
+        const std::uint16_t triangle=find_nearest_navigation_triangle(navigation,point);
+        return triangle!=0U && navigation_point_inside_triangle(navigation,point,triangle);
+    };
+    return collision;
+}
 
 std::optional<float> segment_footprint_distance(float x0,float z0,float x1,float z1,float cx,float cz,
                                                 float sine,float cosine,
