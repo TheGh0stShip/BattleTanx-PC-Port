@@ -5,6 +5,7 @@
 #include "battletanx/geometry.hpp"
 #include "battletanx/host_input.hpp"
 #include "battletanx/lzari.hpp"
+#include "battletanx/level.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/resource.hpp"
 #include "battletanx/sha256.hpp"
@@ -15,6 +16,20 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <vector>
+
+namespace {
+void put_u16(std::vector<std::uint8_t>& bytes,std::size_t offset,std::uint16_t value) {
+    bytes[offset]=static_cast<std::uint8_t>(value>>8U);
+    bytes[offset+1U]=static_cast<std::uint8_t>(value);
+}
+void put_u32(std::vector<std::uint8_t>& bytes,std::size_t offset,std::uint32_t value) {
+    bytes[offset]=static_cast<std::uint8_t>(value>>24U);
+    bytes[offset+1U]=static_cast<std::uint8_t>(value>>16U);
+    bytes[offset+2U]=static_cast<std::uint8_t>(value>>8U);
+    bytes[offset+3U]=static_cast<std::uint8_t>(value);
+}
+} // namespace
 
 #define CHECK(expression) \
     do { \
@@ -26,6 +41,78 @@
     } while (false)
 
 int main() {
+    {
+        const auto descriptors=battletanx::level_stream_descriptors();
+        CHECK(descriptors.size()==22U);
+        CHECK(descriptors.front().index==0 && descriptors.back().index==27);
+        std::size_t navigation_count=0U;
+        for (const auto& descriptor : descriptors) {
+            CHECK(descriptor.world.start<descriptor.world.end);
+            CHECK(descriptor.world.end<=battletanx::Rom::expected_size);
+            if (descriptor.navigation) {
+                ++navigation_count;
+                CHECK(descriptor.navigation->start<descriptor.navigation->end);
+                CHECK(descriptor.navigation->end<=battletanx::Rom::expected_size);
+            }
+        }
+        CHECK(navigation_count==18U);
+
+        std::vector<std::uint8_t> world(0x340U);
+        constexpr std::array<std::uint32_t,9> offsets{
+            0x24U,0x304U,0x318U,0x334U,0x340U,0x340U,0x340U,0x340U,0x340U};
+        for (std::size_t index=0; index<offsets.size(); ++index) {
+            put_u32(world,index*4U,offsets[index]);
+        }
+        put_u32(world,0x24U+0x20U,0x12345678U);
+        put_u32(world,0x24U+0x27CU,1U);
+        put_u32(world,0x24U+0x280U,0xFFFFFFFFU);
+        put_u16(world,0x304U,1U);
+        put_u16(world,0x306U,0U);
+        world[0x318U]=0U;
+        world[0x319U]=7U;
+        put_u32(world,0x320U,3U);
+        put_u32(world,0x324U,0x3F800000U);
+        put_u32(world,0x328U,0xC0200000U);
+        put_u16(world,0x32CU,0x4000U);
+        put_u16(world,0x32EU,0xFFFFU);
+        put_u16(world,0x330U,0U);
+        put_u16(world,0x336U,9U);
+        put_u16(world,0x338U,0xFFF6U);
+        put_u16(world,0x33AU,0xFFECU);
+        put_u16(world,0x33CU,30U);
+        put_u16(world,0x33EU,40U);
+        const auto parsed=battletanx::parse_world_level(world);
+        CHECK(parsed.flags==0x12345678U);
+        CHECK(parsed.groups.size()==1U && parsed.groups[0].item_count==1U);
+        CHECK(parsed.items.size()==1U && parsed.items[0].kind==7U);
+        CHECK(parsed.items[0].x==1.0F && parsed.items[0].z==-2.5F);
+        CHECK(parsed.shapes.size()==1U && parsed.shapes[0].slot==9U);
+        CHECK(parsed.shapes[0].min_x==-10 && parsed.shapes[0].max_z==40);
+
+        std::vector<std::uint8_t> navigation(0x162U);
+        put_u32(navigation,0U,static_cast<std::uint32_t>(navigation.size()));
+        put_u32(navigation,4U,static_cast<std::uint32_t>(navigation.size()));
+        put_u16(navigation,8U,4U);
+        put_u16(navigation,0xAU,2U);
+        put_u32(navigation,0xCU,0x28U);
+        put_u32(navigation,0x10U,0x48U);
+        put_u32(navigation,0x14U,0x48U);
+        put_u32(navigation,0x18U,0x60U);
+        put_u32(navigation,0x1CU,0x62U);
+        put_u32(navigation,0x20U,0x02000000U);
+        put_u32(navigation,0x30U,0x3F800000U);
+        put_u32(navigation,0x34U,0x40000000U);
+        put_u16(navigation,0x54U,1U);
+        put_u16(navigation,0x58U,2U);
+        put_u16(navigation,0x5CU,3U);
+        navigation[0x61U]=5U;
+        navigation[0x62U+5U]=1U;
+        const auto nav=battletanx::parse_navigation_level(navigation);
+        CHECK(nav.vertices.size()==4U && nav.vertices[1].x==1.0F && nav.vertices[1].z==2.0F);
+        CHECK(nav.triangles.size()==2U && nav.triangles[1].kind==5U);
+        CHECK(nav.triangles[1].corners[2].vertex==3U && nav.kind_enabled[5]==1U);
+    }
+
     {
         const auto resources=battletanx::resource_descriptors();
         CHECK(resources.size()==21U);

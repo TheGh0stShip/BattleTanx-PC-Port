@@ -38,10 +38,12 @@ ctest --test-dir build --output-on-failure
 ```
 
 The current executable proves the portable build and ROM-loading boundary. It
-validates the complete ROM, decompresses one audited retail resource bundle,
-and validates its offset table before exposing entries to the native runtime.
-The resource layer records all 21 currently audited BattleTanx bundle ranges
-and enforces each original loader's destination capacity.
+validates the complete ROM, decompresses all 21 audited retail resource
+bundles, and validates their offset tables before exposing entries to the
+native runtime. Each original loader's destination capacity remains enforced.
+It also decodes and validates all 22 recovered world streams and all 18
+navigation streams, including group-to-placement ranges, shape references,
+navigation vertex references, and triangle adjacency bounds.
 The portable core also contains deterministic recovered controller-state and
 planar-motion behavior covered by host tests.
 The original interpolated 16-bit angle behavior reads its 257-sample sine
@@ -53,7 +55,8 @@ game's corner ordering for later collision and world-query integration.
 library. It creates a native Linux or Windows window, maps keyboard and game
 controllers to the original controller representation, and presents a native
 pixel surface. This diagnostic is not gameplay and does not execute or
-translate N64 code. Escape or closing the window exits.
+translate N64 code. It plots the decoded level-one retail placements as an
+early level-data visualization. Escape or closing the window exits.
 
 Up to four hot-pluggable SDL game controllers are assigned to ports in
 connection order. The left stick supplies the N64 analog stick, the D-pad and

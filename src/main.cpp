@@ -1,6 +1,7 @@
 #include "battletanx/angle.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/lzari.hpp"
+#include "battletanx/level.hpp"
 #include "battletanx/platform.hpp"
 #include "battletanx/resource.hpp"
 #include "battletanx/rom.hpp"
@@ -11,6 +12,8 @@
 #include <cmath>
 #include <exception>
 #include <iostream>
+#include <limits>
+#include <optional>
 #include <string_view>
 #include <thread>
 
@@ -27,12 +30,23 @@ void fill_rectangle(std::array<std::uint32_t,battletanx::native_width*battletanx
     }
 }
 
-void run_platform_diagnostic() {
+void run_platform_diagnostic(const battletanx::WorldLevel& world) {
     auto platform=battletanx::Platform::create("BattleTanx native source port");
     std::array<std::uint32_t,battletanx::native_width*battletanx::native_height> pixels{};
     std::array<battletanx::ControllerPad,4> previous{};
     std::array<battletanx::ControllerPad,4> current{};
     const auto frame_period=std::chrono::microseconds(16667);
+    float min_x=std::numeric_limits<float>::max();
+    float max_x=std::numeric_limits<float>::lowest();
+    float min_z=std::numeric_limits<float>::max();
+    float max_z=std::numeric_limits<float>::lowest();
+    for (const auto& item : world.items) {
+        if (!std::isfinite(item.x) || !std::isfinite(item.z)) continue;
+        min_x=std::min(min_x,item.x); max_x=std::max(max_x,item.x);
+        min_z=std::min(min_z,item.z); max_z=std::max(max_z,item.z);
+    }
+    const float span_x=std::max(max_x-min_x,1.0F);
+    const float span_z=std::max(max_z-min_z,1.0F);
     while (platform->pump(current)) {
         const auto frame_start=std::chrono::steady_clock::now();
         const auto input=battletanx::translate_player_input(current[0],previous[0]);
@@ -44,6 +58,14 @@ void run_platform_diagnostic() {
         fill_rectangle(pixels,24,24,4,battletanx::native_height-48,0x00608090U);
         fill_rectangle(pixels,battletanx::native_width-28,24,4,
                        battletanx::native_height-48,0x00608090U);
+        for (const auto& item : world.items) {
+            if (!std::isfinite(item.x) || !std::isfinite(item.z)) continue;
+            const int x=32+static_cast<int>((item.x-min_x)/span_x*
+                                            (battletanx::native_width-64));
+            const int y=32+static_cast<int>((item.z-min_z)/span_z*
+                                            (battletanx::native_height-64));
+            fill_rectangle(pixels,x-1,y-1,3,3,0x0060C070U);
+        }
         const int center_x=battletanx::native_width/2+input.stick_x;
         const int center_y=battletanx::native_height/2-input.stick_y;
         fill_rectangle(pixels,center_x-8,center_y-8,16,16,
@@ -87,8 +109,25 @@ int main(int argc, char** argv) {
         }
         std::cout << "Loaded retail 16-bit angle table: "
                   << battletanx::AngleTable::value_count << " samples\n";
+        std::optional<battletanx::WorldLevel> preview_world;
+        std::size_t world_groups=0U;
+        std::size_t world_items=0U;
+        std::size_t navigation_triangles=0U;
+        for (const auto& descriptor : battletanx::level_stream_descriptors()) {
+            auto world=battletanx::load_world_level(rom,descriptor);
+            world_groups+=world.groups.size();
+            world_items+=world.items.size();
+            if (descriptor.index==1) preview_world=std::move(world);
+            if (descriptor.navigation) {
+                navigation_triangles+=
+                    battletanx::load_navigation_level(rom,descriptor).triangles.size();
+            }
+        }
+        std::cout << "Validated 22 world streams and 18 navigation streams: "
+                  << world_groups << " groups, " << world_items << " placements, "
+                  << navigation_triangles << " navigation triangles\n";
         std::cout << "Native runtime foundation is ready; gameplay bring-up is in progress.\n";
-        if (show_window) run_platform_diagnostic();
+        if (show_window) run_platform_diagnostic(*preview_world);
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';
         return 1;

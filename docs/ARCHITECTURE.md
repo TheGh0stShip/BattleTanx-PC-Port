@@ -21,9 +21,11 @@ dependencies have been reviewed.
 The PC executable is a source port, not an emulator. Its build rejects assembly,
 generated translation sources, CPU-recompilation inputs, N64 instruction
 interpreters, compatibility runtimes, and N64 renderer emulation dependencies.
-The core currently has no linked runtime dependencies, and the executable links
-only that reviewed core. Future window, audio, input, and graphics dependencies
-must be native host service libraries and must be reviewed at the build gate.
+The core currently has no linked runtime dependencies. The executable links
+the reviewed core and platform layer; that platform layer links only pinned
+SDL2 as its native window, framebuffer, keyboard, and controller service. Any
+future audio or graphics dependencies must remain native host libraries and
+must be reviewed at the build gate.
 
 The user-supplied ROM is a read-only data container. Loading endian-sensitive
 tables, compressed resources, models, textures, audio, or level data from it
@@ -37,6 +39,9 @@ does not execute cartridge code.
 - Native pointers are never narrowed to reproduce an N64 field.
 - Runtime objects retain natural host alignment; serialized structures are
   decoded field by field instead of globally packing C++ types.
+- The 22 world streams and 18 navigation streams are decompressed from audited
+  ROM ranges into host-owned records. Their section boundaries, counts, shape
+  references, vertex references, and adjacency indices are checked first.
 - Linux x86-64 is normally LP64, while Windows x64 is LLP64. Neither host data
   model implicitly reproduces the N64 o32 ABI.
 
@@ -52,8 +57,8 @@ the corresponding Linux and Windows facilities.
 2. Add deterministic math, address-token, and resource-decoding tests.
 3. Port a headless gameplay update slice with fixed input and timing.
 4. Emit renderer-neutral scene commands from recovered behavior.
-5. Add window, controller, audio, and renderer backends shared by Linux and
-   Windows.
+5. Add window and controller backends shared by Linux and Windows, followed by
+   native audio and renderer backends.
 6. Expand through menus, campaign, multiplayer, storage, and full-game
    regression coverage.
 

@@ -13,6 +13,7 @@ add_library(battletanx_core
     src/gameplay.cpp
     src/geometry.cpp
     src/host_input.cpp
+    src/level.cpp
     src/lzari.cpp
     src/resource.cpp
     src/rom.cpp
