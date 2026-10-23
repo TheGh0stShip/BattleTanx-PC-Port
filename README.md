@@ -142,7 +142,8 @@ either trigger or Left Shift to fire the cannon at its original repeat
 interval. Start or Enter pauses and resumes the match. The default retail
 control preset keeps the turret aligned with the hull. Movement and projectile
 travel stop at navigation boundaries, blocked cells, and registered static
-world shapes. Escape or closing the window exits.
+world shapes. F11 or Alt+Enter toggles borderless fullscreen. Escape or
+closing the window exits.
 
 The current playable slice is not yet the complete campaign. Remaining work
 includes campaign menus and level transitions, recovered scripted enemy goals,

@@ -114,6 +114,14 @@ class SdlPlatform final : public Platform {
             if (event.type==SDL_QUIT) return false;
             if (event.type==SDL_CONTROLLERDEVICEADDED) open_controller(event.cdevice.which);
             if (event.type==SDL_CONTROLLERDEVICEREMOVED) close_controller(event.cdevice.which);
+            if (event.type==SDL_KEYDOWN && event.key.repeat==0 &&
+                (event.key.keysym.sym==SDLK_F11 ||
+                 (event.key.keysym.sym==SDLK_RETURN &&
+                  (event.key.keysym.mod&KMOD_ALT)!=0))) {
+                const bool fullscreen=(SDL_GetWindowFlags(window_)&SDL_WINDOW_FULLSCREEN_DESKTOP)!=0U;
+                SDL_SetWindowFullscreen(window_,fullscreen ? 0U :
+                    static_cast<Uint32>(SDL_WINDOW_FULLSCREEN_DESKTOP));
+            }
         }
         const Uint8* keys=SDL_GetKeyboardState(nullptr);
         if (keys[SDL_SCANCODE_ESCAPE]!=0) return false;
