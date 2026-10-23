@@ -84,10 +84,12 @@ void update_player_tank(PlayerTank& tank,const DriveInput& input,
                         const WorldLevel& world,const NavigationLevel& navigation,
                         const AngleTable& angles);
 bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
-                                const DriveInput& input,const NavigationLevel& navigation,
-                                const AngleTable& angles,std::int32_t game_tick);
+                                const DriveInput& input,const WorldLevel& world,
+                                const NavigationLevel& navigation,const AngleTable& angles,
+                                std::int32_t game_tick);
 void update_player_projectile(PlayerProjectile& projectile,
-                              const NavigationLevel& navigation);
+                              const WorldLevel& world,const NavigationLevel& navigation,
+                              const AngleTable& angles);
 
 static_assert(sizeof(PlanarMotion)==0x30);
 

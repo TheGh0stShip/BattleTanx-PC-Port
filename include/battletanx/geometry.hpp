@@ -36,6 +36,8 @@ void rotated_rect_corners(const RotatedRect& rect,const AngleTable& angles,
                           std::array<PlanarPoint,4>& output);
 bool oriented_rects_overlap(const OrientedRect& first,const OrientedRect& second,
                             const AngleTable& angles);
+bool segment_intersects_oriented_rect(PlanarPoint begin,PlanarPoint end,
+                                      const OrientedRect& rect,const AngleTable& angles);
 
 } // namespace battletanx
 

@@ -86,5 +86,31 @@ bool oriented_rects_overlap(const OrientedRect& first,const OrientedRect& second
     return true;
 }
 
+bool segment_intersects_oriented_rect(PlanarPoint begin,PlanarPoint end,
+                                      const OrientedRect& rect,const AngleTable& angles) {
+    const float sine=angles.sine(rect.angle);
+    const float cosine=angles.cosine(rect.angle);
+    const auto to_local=[&](PlanarPoint point) {
+        const float x=point.x-rect.origin_x;
+        const float z=point.z-rect.origin_z;
+        return PlanarPoint{cosine*x+sine*z,-sine*x+cosine*z};
+    };
+    begin=to_local(begin);
+    end=to_local(end);
+    float minimum=0.0F;
+    float maximum=1.0F;
+    const auto clip=[&](float start,float delta,float low,float high) {
+        if (delta==0.0F) return start>=low && start<=high;
+        float first=(low-start)/delta;
+        float second=(high-start)/delta;
+        if (first>second) std::swap(first,second);
+        minimum=std::max(minimum,first);
+        maximum=std::min(maximum,second);
+        return minimum<=maximum;
+    };
+    return clip(begin.x,end.x-begin.x,rect.min_x,rect.max_x) &&
+           clip(begin.z,end.z-begin.z,rect.min_z,rect.max_z);
+}
+
 } // namespace battletanx
 

@@ -192,8 +192,9 @@ void update_player_tank(PlayerTank& tank,const DriveInput& input,
 }
 
 bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
-                                const DriveInput& input,const NavigationLevel& navigation,
-                                const AngleTable& angles,std::int32_t game_tick) {
+                                const DriveInput& input,const WorldLevel& world,
+                                const NavigationLevel& navigation,const AngleTable& angles,
+                                std::int32_t game_tick) {
     constexpr std::int32_t cooldown=30;
     if (projectile.active || !input.fire || tank.primary_ammo<=0 ||
         tank.primary_last_tick+cooldown>=game_tick) return false;
@@ -208,6 +209,18 @@ bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
     const auto trace=trace_navigation_segment(
         navigation,tank.navigation_triangle,origin,muzzle);
     if (trace.stop!=NavigationTraceStop::target) return false;
+    for (const auto& item:world.items) {
+        if (item.shape<0 || static_cast<std::size_t>(item.shape)>=world.shapes.size()) continue;
+        if (item.type!=1 && item.type!=19 && item.type!=26 && item.type!=27 && item.type!=30) {
+            continue;
+        }
+        const auto& shape=world.shapes[static_cast<std::size_t>(item.shape)];
+        if (segment_intersects_oriented_rect(
+                {origin.x,origin.z},{muzzle.x,muzzle.z},
+                {item.x,item.z,static_cast<float>(shape.min_x),
+                 static_cast<float>(shape.max_x),static_cast<float>(shape.min_z),
+                 static_cast<float>(shape.max_z),item.angle},angles)) return false;
+    }
     projectile={muzzle.x,muzzle.z,
                 direction_x*projectile_speed,direction_z*projectile_speed,
                 trace.triangle,112U,true};
@@ -217,14 +230,31 @@ bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
 }
 
 void update_player_projectile(PlayerProjectile& projectile,
-                              const NavigationLevel& navigation) {
+                              const WorldLevel& world,const NavigationLevel& navigation,
+                              const AngleTable& angles) {
     if (!projectile.active) return;
     const NavigationVertex from{projectile.x,projectile.z};
     const NavigationVertex candidate{
         projectile.x+projectile.velocity_x,projectile.z+projectile.velocity_z};
     const auto trace=trace_navigation_segment(
         navigation,projectile.navigation_triangle,from,candidate);
-    if (trace.stop!=NavigationTraceStop::target || projectile.frames_remaining<=1U) {
+    bool world_hit=false;
+    for (const auto& item:world.items) {
+        if (item.shape<0 || static_cast<std::size_t>(item.shape)>=world.shapes.size()) continue;
+        if (item.type!=1 && item.type!=19 && item.type!=26 && item.type!=27 && item.type!=30) {
+            continue;
+        }
+        const auto& shape=world.shapes[static_cast<std::size_t>(item.shape)];
+        if (segment_intersects_oriented_rect(
+                {from.x,from.z},{candidate.x,candidate.z},
+                {item.x,item.z,static_cast<float>(shape.min_x),
+                 static_cast<float>(shape.max_x),static_cast<float>(shape.min_z),
+                 static_cast<float>(shape.max_z),item.angle},angles)) {
+            world_hit=true;
+            break;
+        }
+    }
+    if (trace.stop!=NavigationTraceStop::target || world_hit || projectile.frames_remaining<=1U) {
         projectile.active=false;
         projectile.frames_remaining=0U;
         return;

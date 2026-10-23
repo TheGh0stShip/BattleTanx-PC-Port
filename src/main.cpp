@@ -72,8 +72,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         previous=current;
         battletanx::update_player_tank(tank,input,world,navigation,angles);
         battletanx::try_fire_player_projectile(
-            projectile,tank,input,navigation,angles,game_tick);
-        battletanx::update_player_projectile(projectile,navigation);
+            projectile,tank,input,world,navigation,angles,game_tick);
+        battletanx::update_player_projectile(projectile,world,navigation,angles);
         ++game_tick;
         pixels.fill(0x00101820U);
         fill_rectangle(pixels,24,24,battletanx::native_width-48,4,0x00608090U);

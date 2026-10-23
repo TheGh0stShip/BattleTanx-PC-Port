@@ -253,6 +253,10 @@ int main() {
         const battletanx::OrientedRect separate{5.0F,0.0F,-1.0F,1.0F,-1.0F,1.0F,0};
         CHECK(battletanx::oriented_rects_overlap(overlap_a,overlap_b,angles));
         CHECK(!battletanx::oriented_rects_overlap(overlap_a,separate,angles));
+        CHECK(battletanx::segment_intersects_oriented_rect(
+            {-3.0F,0.0F},{3.0F,0.0F},overlap_a,angles));
+        CHECK(!battletanx::segment_intersects_oriented_rect(
+            {-3.0F,4.0F},{3.0F,4.0F},overlap_a,angles));
 
         battletanx::NavigationLevel drive_nav;
         drive_nav.vertices={{},{-1000.0F,-1000.0F},{-1000.0F,1000.0F},
@@ -295,25 +299,30 @@ int main() {
         battletanx::update_player_tank(
             blocked_tank,drive,collision_world,drive_nav,angles);
         CHECK(blocked_tank.z==0.0F && blocked_tank.velocity_z<0.0F);
+        battletanx::PlayerProjectile wall_projectile{
+            0.0F,0.0F,0.0F,110.0F,1U,112U,true};
+        battletanx::update_player_projectile(
+            wall_projectile,collision_world,drive_nav,angles);
+        CHECK(!wall_projectile.active && wall_projectile.frames_remaining==0U);
         battletanx::PlayerProjectile projectile{};
         battletanx::DriveInput fire{};
         fire.fire=true;
         fire.fire_pressed=true;
         CHECK(battletanx::try_fire_player_projectile(
-            projectile,tank,fire,drive_nav,angles,0));
+            projectile,tank,fire,drive_world,drive_nav,angles,0));
         CHECK(projectile.active && projectile.frames_remaining==112U);
         CHECK(tank.primary_last_tick==0 && tank.primary_ammo==69);
         const float projectile_x=projectile.x;
-        battletanx::update_player_projectile(projectile,drive_nav);
+        battletanx::update_player_projectile(projectile,drive_world,drive_nav,angles);
         CHECK(projectile.active && projectile.x>projectile_x &&
               projectile.frames_remaining==111U);
         CHECK(!battletanx::try_fire_player_projectile(
-            projectile,tank,fire,drive_nav,angles,31));
+            projectile,tank,fire,drive_world,drive_nav,angles,31));
         projectile.active=false;
         CHECK(!battletanx::try_fire_player_projectile(
-            projectile,tank,fire,drive_nav,angles,30));
+            projectile,tank,fire,drive_world,drive_nav,angles,30));
         CHECK(battletanx::try_fire_player_projectile(
-            projectile,tank,fire,drive_nav,angles,31));
+            projectile,tank,fire,drive_world,drive_nav,angles,31));
     }
 
     {
