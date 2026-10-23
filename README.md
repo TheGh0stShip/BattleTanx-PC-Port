@@ -136,12 +136,12 @@ engage the player, cannon shells damage units and world obstacles, destroyed
 tanks affect the mission result, and the player can respawn from the recovered
 30 Hz match-state flow.
 
-Drive with the left stick or WASD and hold the left trigger or Left Shift to
-fire the cannon at its original repeat interval. Start or Enter pauses and
-resumes the match. The default retail control preset keeps the turret aligned
-with the hull. Movement and projectile travel stop at navigation boundaries,
-blocked cells, and registered static world shapes. Escape or closing the
-window exits.
+Press Start or Enter to begin. Drive with the left stick or WASD and hold
+either trigger or Left Shift to fire the cannon at its original repeat
+interval. Start or Enter pauses and resumes the match. The default retail
+control preset keeps the turret aligned with the hull. Movement and projectile
+travel stop at navigation boundaries, blocked cells, and registered static
+world shapes. Escape or closing the window exits.
 
 The current playable slice is not yet the complete campaign. Remaining work
 includes campaign menus and level transitions, recovered scripted enemy goals,
@@ -151,9 +151,11 @@ modes.
 
 Up to four hot-pluggable SDL game controllers are assigned to ports in
 connection order. The left stick supplies the N64 analog stick, the D-pad and
-shoulders map directly, the left trigger supplies Z, Start supplies Start, and
-the right stick supplies the four C buttons. Keyboard controls remain available
-for port one: WASD, X/Z, Left Shift, Enter, Q/E, arrows, and I/J/K/L.
+shoulders map directly, either trigger supplies Z, the south face button
+supplies A, either adjacent face button supplies B, Start supplies Start, and
+the right stick supplies the four C buttons. Keyboard controls remain
+available for port one: WASD, X/Z, Left Shift, Enter, Q/E, arrows, and
+I/J/K/L.
 
 ## Saves
 
