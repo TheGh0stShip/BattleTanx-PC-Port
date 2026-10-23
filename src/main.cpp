@@ -7,6 +7,7 @@
 #include "battletanx/campaign_briefing.hpp"
 #include "battletanx/campaign_battle_bridge.hpp"
 #include "battletanx/campaign_record.hpp"
+#include "battletanx/campaign_save_transaction.hpp"
 #include "battletanx/campaign_spawn.hpp"
 #include "battletanx/controller_pak.hpp"
 #include "battletanx/fixed_tick.hpp"
@@ -69,7 +70,7 @@ std::array<std::uint32_t,pickup_model_kind_count> load_pickup_model_slots(
     return slots;
 }
 
-enum class WaveRunResult { quit, retry, advance, selection_previous, selection_next };
+enum class WaveRunResult { quit, retry, advance, complete, selection_previous, selection_next };
 
 std::string roster_summary(const battletanx::ControllerRoster& roster) {
     std::array<std::size_t,3> counts{};
@@ -272,7 +273,9 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
               << (terrain_sample ? terrain_sample->height : 0.0F) << '\n';
     std::uint64_t game_tick=0U;
     bool verified_native_frame=false;
+    battletanx::campaign_save::SaveTransaction save_transaction(campaign);
     bool progress_saved=false;
+    bool campaign_complete=false;
     while (platform->pump(current)) {
         const auto pad=battletanx::translate_player_input(current[0],previous[0]);
         if (session.mission().state()==battletanx::MatchState::title) {
@@ -311,10 +314,15 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                 const bool endurance_finished=
                     event.kind==battletanx::GameplayEventKind::mission_failed &&
                     wave.advances_on_failure;
-                if ((cleared || endurance_finished) && !progress_saved) {
+                if ((cleared || endurance_finished) && !progress_saved &&
+                    !save_transaction.pending().has_value() && !campaign_complete) {
                     battletanx::CampaignWaveClear clear;
                     const auto* next=battletanx::next_campaign_wave(wave);
-                    clear.mission_id=next!=nullptr ? static_cast<std::uint8_t>(next->mission_id) : 0U;
+                    if (next==nullptr) {
+                        campaign_complete=true;
+                        continue;
+                    }
+                    clear.mission_id=static_cast<std::uint8_t>(next->mission_id);
                     clear.carry=session.owners()[0].score;
                     clear.unit_type=campaign.unit_type;
                     clear.bonus=campaign.bonus;
@@ -327,11 +335,10 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                     clear.sfx_volume=campaign.sfx_volume;
                     clear.music_volume=campaign.music_volume;
                     clear.bindings=campaign.bindings;
-                    battletanx::apply_campaign_wave_clear(campaign,clear);
-                    battletanx::write_controller_pak_record(
-                        pak_path,battletanx::serialize_campaign_record(campaign));
-                    progress_saved=true;
-                    std::cout << "Saved campaign progress to the Controller Pak\n";
+                    if (save_transaction.request(next->wave_index,clear)!=
+                        battletanx::campaign_save::RequestResult::issued) {
+                        throw std::runtime_error("failed to stage campaign progress");
+                    }
                 }
             }
             const auto listener_id=session.owner_unit(0U);
@@ -349,6 +356,18 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             session_input.drive.special_pressed=false;
             session_input.start_pressed=false;
             session_input.advance=false;
+        }
+        if (save_transaction.pending()) {
+            const auto sequence=save_transaction.pending()->sequence;
+            battletanx::write_controller_pak_record(
+                pak_path,save_transaction.pending()->bytes);
+            if (save_transaction.acknowledge(sequence,true)!=
+                battletanx::campaign_save::AckResult::committed) {
+                throw std::runtime_error("failed to commit campaign progress");
+            }
+            campaign=save_transaction.authoritative();
+            progress_saved=true;
+            std::cout << "Saved campaign progress to the Controller Pak\n";
         }
         const auto active_player=session.owner_unit(0U);
         if (active_player) {
@@ -544,6 +563,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             return WaveRunResult::quit;
         }
         if (advance_requested && session.mission().state()==battletanx::MatchState::round_over) {
+            if (campaign_complete) return WaveRunResult::complete;
             return progress_saved ? WaveRunResult::advance : WaveRunResult::retry;
         }
         const auto next_tick_nanoseconds=static_cast<std::int64_t>(
@@ -737,6 +757,10 @@ int main(int argc, char** argv) {
                 std::cout << "Restarting campaign wave "
                           << static_cast<unsigned>(wave->wave_index) << '\n';
                 continue;
+            }
+            if (result==WaveRunResult::complete) {
+                std::cout << "Campaign complete. Final progress remains on the Controller Pak.\n";
+                break;
             }
             pak=battletanx::load_controller_pak_record(pak_path);
             if (!pak) throw std::runtime_error("failed to reload the Controller Pak after wave clear");
