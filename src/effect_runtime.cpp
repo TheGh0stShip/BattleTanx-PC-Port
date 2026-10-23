@@ -83,7 +83,15 @@ constexpr std::uint8_t status_keep=0U, status_free=2U; // update_active_effect_l
 // Hash/layout discriminator; there is no deserializer.
 constexpr std::uint8_t effect_serialize_version=3U; // 3: transient beam visuals
 
-bool drawn(EffectKind kind) noexcept { return kind!=EffectKind::script; }
+// None of the pooled effect records currently carries a global model slot.
+// Particles, ramps, oscillators, muzzle flashes and smoke use dedicated retail
+// draw paths. Decals carry the render-part token returned by func_8008CED0, not
+// an index into D_802D5A30. Treating either token as a global slot displays an
+// unrelated level model at the effect position. Beams and status visuals are
+// submitted through their separate, recovered render paths below.
+bool has_global_model_slot(const EffectNode&) noexcept {
+    return false;
+}
 
 } // namespace
 
@@ -464,7 +472,7 @@ void EffectRuntime::collect(EffectRenderQueue& out) const {
     for (const std::int16_t head : {walked_active_,persistent_active_}) {
         for (std::int16_t i=head; i!=no_link; i=nodes_[static_cast<std::uint16_t>(i)].next) {
             const EffectNode& e=nodes_[static_cast<std::uint16_t>(i)];
-            if (!drawn(e.kind)) continue;
+            if (!has_global_model_slot(e)) continue;
             const ParticleDef* def=(e.kind==EffectKind::decal || e.kind==EffectKind::smoke) ? nullptr : particle_def(e.index);
             const std::optional<std::uint32_t> sweep=e.kind==EffectKind::oscillator ? oscillator_duration_for(e.index)
                                                                                      : std::nullopt;

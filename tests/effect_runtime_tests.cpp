@@ -84,6 +84,22 @@ RUNTIME_TEST(spawns_are_pending_until_merged_and_batches_keep_allocation_order) 
     return true;
 }
 
+RUNTIME_TEST(unimplemented_effect_draw_paths_do_not_fall_back_to_global_models) {
+    auto fx=make();
+    REQUIRE(fx->spawn_particle(EffectKind::particle,9U,10.0F,20.0F,30.0F,0U).status==SpawnStatus::spawned);
+    fx->update(0U);
+    EffectRenderQueue particles(4U);
+    fx->collect(particles);
+    REQUIRE(particles.events().empty());
+
+    REQUIRE(fx->spawn_decal(DecalParams{.model_slot=models::impact_decal}).status==SpawnStatus::spawned);
+    fx->update(1U);
+    EffectRenderQueue decals(4U);
+    fx->collect(decals);
+    REQUIRE(decals.events().empty());
+    return true;
+}
+
 RUNTIME_TEST(children_spawned_during_walk_are_first_updated_next_frame) {
     auto fx=make();
     fx->spawn_script(variant::tank_destroyed,0,0,0,0U);   // script 0
