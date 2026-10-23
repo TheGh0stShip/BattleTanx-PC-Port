@@ -166,6 +166,18 @@ class SdlPlatform final : public Platform {
         SDL_UnlockAudioDevice(audio_device_);
     }
 
+    void set_music_track(const MusicTrack& music,float gain) override {
+        if (music.sample_rate!=static_cast<std::uint32_t>(audio_spec_.freq) ||
+            (music.stereo_samples.size()&1U)!=0U || !std::isfinite(gain)) {
+            throw std::runtime_error("music track does not match the native audio device");
+        }
+        SDL_LockAudioDevice(audio_device_);
+        music_=music;
+        music_cursor_=0U;
+        music_gain_=std::clamp(gain,0.0F,1.0F);
+        SDL_UnlockAudioDevice(audio_device_);
+    }
+
     void play_sound(std::uint16_t sound_id,float pan,float gain) override {
         if (sound_id>=sounds_.sounds.size() || !std::isfinite(pan) || !std::isfinite(gain)) return;
         pan=std::clamp(pan,-1.0F,1.0F);
@@ -242,6 +254,13 @@ class SdlPlatform final : public Platform {
         for (int frame=0; frame<frames; ++frame) {
             std::int32_t left=0;
             std::int32_t right=0;
+            if (!music_.stereo_samples.empty()) {
+                left=static_cast<std::int32_t>(
+                    music_.stereo_samples[music_cursor_]*music_gain_);
+                right=static_cast<std::int32_t>(
+                    music_.stereo_samples[music_cursor_+1U]*music_gain_);
+                music_cursor_=(music_cursor_+2U)%music_.stereo_samples.size();
+            }
             for (Voice& voice:voices_) {
                 if (voice.sound>=sounds_.sounds.size()) continue;
                 const PcmSound& sound=sounds_.sounds[voice.sound];
@@ -269,6 +288,9 @@ class SdlPlatform final : public Platform {
     SDL_AudioDeviceID audio_device_{};
     SDL_AudioSpec audio_spec_{};
     SoundBank sounds_;
+    MusicTrack music_;
+    std::size_t music_cursor_{};
+    float music_gain_{};
     std::vector<Voice> voices_;
     std::array<SDL_GameController*,4> controllers_{};
 };

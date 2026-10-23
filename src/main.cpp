@@ -52,11 +52,13 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::InputBindings& bindings,
                              const battletanx::ModelAssets& assets,
                              const battletanx::SoundBank& sounds,
+                             const battletanx::MusicTrack& music,
                              const std::array<std::uint32_t,pickup_model_kind_count>& pickup_models,
                              battletanx::CampaignRecord campaign,
                              const std::filesystem::path& pak_path) {
     auto platform=battletanx::Platform::create("BattleTanx native source port");
     platform->set_sound_bank(sounds);
+    platform->set_music_track(music,static_cast<float>(campaign.music_volume)/7.0F);
     battletanx::SoftwareRenderer renderer(
         battletanx::native_width,battletanx::native_height);
     std::array<battletanx::ControllerPad,4> previous{};
@@ -154,7 +156,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             for (const auto& sound:session.sound_events()) {
                 const float pan=listener!=nullptr && sound.positional ?
                     std::clamp((sound.x-listener->x)/2000.0F,-1.0F,1.0F) : 0.0F;
-                platform->play_sound(sound.sound_id,pan);
+                platform->play_sound(sound.sound_id,pan,
+                    static_cast<float>(campaign.sfx_volume)/7.0F);
             }
             session.clear_events();
             ++game_tick;
@@ -336,6 +339,8 @@ int main(int argc, char** argv) {
                   << " vertices, " << model_audit.triangles << " triangles\n";
         const auto preview_assets=battletanx::ModelAssets::load(rom,*preview_world);
         const auto sounds=battletanx::load_sound_effect_bank(rom);
+        std::optional<battletanx::MusicTrack> music;
+        if (show_window) music=battletanx::render_music_sequence(rom,5U);
         const auto pickup_models=load_pickup_model_slots(rom);
         for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x52U}) {
             if (preview_assets.set_base()+slot>=preview_assets.sets().size() ||
@@ -348,11 +353,16 @@ int main(int argc, char** argv) {
                   << preview_assets.materials().size() << " materials\n";
         std::cout << "Decoded " << sounds.sounds.size()
                   << " native sound effects at " << sounds.sample_rate << " Hz\n";
+        if (music) {
+            std::cout << "Rendered native music sequence " << music->sequence_index
+                      << ": " << music->stereo_samples.size()/2U
+                      << " stereo frames\n";
+        }
         std::cout << "Native gameplay runtime is ready.\n";
         if (show_window) {
             run_platform_diagnostic(
                 *preview_world,*preview_navigation,angles,bindings,preview_assets,
-                sounds,pickup_models,*campaign,pak_path);
+                sounds,*music,pickup_models,*campaign,pak_path);
         }
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';

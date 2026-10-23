@@ -21,6 +21,7 @@ class Platform {
     virtual bool pump(std::array<ControllerPad,4>& controllers)=0;
     virtual void present(std::span<const std::uint32_t> pixels,int width,int height)=0;
     virtual void set_sound_bank(const SoundBank& sounds)=0;
+    virtual void set_music_track(const MusicTrack& music,float gain)=0;
     virtual void play_sound(std::uint16_t sound_id,float pan=0.0F,float gain=1.0F)=0;
 
     static std::unique_ptr<Platform> create(std::string_view title);

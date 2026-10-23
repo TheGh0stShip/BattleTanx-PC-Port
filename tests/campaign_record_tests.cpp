@@ -140,11 +140,12 @@ RUNTIME_TEST(defaults_match_session_reset) {
     const auto d=default_campaign_record();
     REQUIRE(d.header==0x42AU && d.mission_id==1U && d.carry==0 && d.unit_type==9);
     REQUIRE(d.bonus==0 && d.difficulty==CampaignDifficulty::easy && d.control_scheme==0U);
+    REQUIRE(d.sfx_volume==7 && d.music_volume==5);
     const auto out=serialize_campaign_record(d);
     REQUIRE(out.bytes[0x04]==0U && out.bytes[0x07]==0x2AU && out.bytes[0x06]==0x04U);
     REQUIRE(out.bytes[0x08]==1U && out.bytes[0x13]==9U);
     REQUIRE(controller_pak_checksum_valid(out) && out.bytes==d.raw.bytes);
-    REQUIRE(d.checksum==0x04U+0x2AU+1U+9U);
+    REQUIRE(d.checksum==0x04U+0x2AU+1U+9U+7U+5U);
     REQUIRE(parse_campaign_record(out).has_value());
     return true;
 }

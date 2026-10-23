@@ -101,6 +101,8 @@ CampaignRecord default_campaign_record() {
     out.bonus=0;
     out.difficulty=CampaignDifficulty::easy;
     out.control_scheme=0U;
+    out.sfx_volume=7;
+    out.music_volume=5;
     out.raw=serialize_campaign_record(out);
     out.checksum=read_u32(out.raw,off::checksum);
     return out;

@@ -20,6 +20,7 @@ add_library(battletanx_core
     src/lzari.cpp
     src/material.cpp
     src/model.cpp
+    src/music.cpp
     src/resource.cpp
     src/render_math.cpp
     src/rom.cpp
