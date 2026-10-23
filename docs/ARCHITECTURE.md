@@ -47,6 +47,11 @@ does not execute cartridge code.
   behavior without reproducing the original address space. Straight-line route
   traversal uses serialized corner adjacency while preserving the retail
   248-edge termination bound.
+- The gameplay bring-up owns native player-tank and projectile state. It uses
+  the recovered controller, angle, planar-motion, and navigation rules without
+  reproducing cartridge pointers or executing original machine code. Current
+  vehicle constants are isolated provisional tuning until their retail tables
+  are decoded.
 - Linux x86-64 is normally LP64, while Windows x64 is LLP64. Neither host data
   model implicitly reproduces the N64 o32 ABI.
 

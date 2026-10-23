@@ -50,21 +50,23 @@ nearest-cell search used during route initialization. Native straight-line
 route traversal follows the recovered corner-adjacency rules and reports
 target, boundary, blocked-cell, and retail 248-step limit outcomes.
 The portable core also contains deterministic recovered controller-state and
-planar-motion behavior covered by host tests.
+planar-motion behavior covered by host tests. The first native gameplay slice
+adds a player-tank state, navigation-constrained movement, and a single
+bounded projectile. Vehicle tuning and the temporary top-down presentation
+remain bring-up code rather than a claim of complete retail gameplay.
 The original interpolated 16-bit angle behavior reads its 257-sample sine
 table directly from the verified ROM rather than embedding retail data.
 Recovered rotated-bound geometry uses the same angle path and preserves the
 game's corner ordering for later collision and world-query integration.
 
-`--window` runs the native platform diagnostic through the pinned SDL2 host
+`--window` runs the native gameplay bring-up through the pinned SDL2 host
 library. It creates a native Linux or Windows window, maps keyboard and game
 controllers to the original controller representation, and presents a native
-pixel surface. This diagnostic is not gameplay and does not execute or
-translate N64 code. It plots the decoded level-one retail placements as an
-early level-data visualization. Move the highlighted navigation query with the
-left stick or WASD; its nearest triangle and containment result are drawn from
-the recovered native spatial-query path, with crossed route edges shown along
-the way. Escape or closing the window exits.
+pixel surface. It does not execute or translate N64 code. It plots decoded
+level-one retail placements and starts a player tank on open navigation data.
+Drive with the left stick or WASD and fire the current test projectile with the
+south face button or X. Movement and projectile travel stop at navigation
+boundaries and blocked cells. Escape or closing the window exits.
 
 Up to four hot-pluggable SDL game controllers are assigned to ports in
 connection order. The left stick supplies the N64 analog stick, the D-pad and

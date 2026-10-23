@@ -201,6 +201,32 @@ int main() {
         CHECK(std::abs(rotated[0].z+1.0F)<0.000001F);
         CHECK(std::abs(rotated[2].x+2.0F)<0.000001F);
         CHECK(std::abs(rotated[2].z-1.0F)<0.000001F);
+
+        battletanx::NavigationLevel drive_nav;
+        drive_nav.vertices={{},{-1000.0F,-1000.0F},{-1000.0F,1000.0F},
+                            {1000.0F,-1000.0F}};
+        battletanx::NavigationTriangle drive_triangle;
+        drive_triangle.corners[0].vertex=1U;
+        drive_triangle.corners[1].vertex=2U;
+        drive_triangle.corners[2].vertex=3U;
+        drive_nav.triangles.resize(2U);
+        drive_nav.triangles[1]=drive_triangle;
+        auto tank=battletanx::spawn_player_tank(drive_nav);
+        CHECK(tank.navigation_triangle==1U);
+        const float start_z=tank.z;
+        battletanx::PlayerInput drive{};
+        drive.stick_y=80;
+        battletanx::update_player_tank(tank,drive,drive_nav,angles);
+        CHECK(tank.z>start_z && tank.navigation_triangle==1U);
+        battletanx::PlayerProjectile projectile{};
+        battletanx::PlayerInput fire{};
+        fire.pressed=0x8000U;
+        CHECK(battletanx::try_fire_player_projectile(projectile,tank,fire,angles));
+        CHECK(projectile.active && projectile.frames_remaining==120U);
+        const float projectile_z=projectile.z;
+        battletanx::update_player_projectile(projectile,drive_nav);
+        CHECK(projectile.active && projectile.z>projectile_z);
+        CHECK(!battletanx::try_fire_player_projectile(projectile,tank,fire,angles));
     }
 
     {

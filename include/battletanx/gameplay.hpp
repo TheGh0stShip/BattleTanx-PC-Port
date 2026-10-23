@@ -1,5 +1,8 @@
 #pragma once
 
+#include "battletanx/angle.hpp"
+#include "battletanx/level.hpp"
+
 #include <cstdint>
 
 namespace battletanx {
@@ -33,9 +36,36 @@ struct PlayerInput {
     std::uint32_t released{};
 };
 
+struct PlayerTank {
+    float x{};
+    float z{};
+    float velocity_x{};
+    float velocity_z{};
+    float heading_degrees{};
+    float turret_degrees{};
+    std::uint16_t navigation_triangle{};
+};
+
+struct PlayerProjectile {
+    float x{};
+    float z{};
+    float velocity_x{};
+    float velocity_z{};
+    std::uint16_t navigation_triangle{};
+    std::uint16_t frames_remaining{};
+    bool active{};
+};
+
 void advance_planar_motion(PlanarMotion& motion, float elapsed_seconds);
 PlayerInput translate_player_input(const ControllerPad& current,
                                    const ControllerPad& previous);
+PlayerTank spawn_player_tank(const NavigationLevel& navigation);
+void update_player_tank(PlayerTank& tank,const PlayerInput& input,
+                        const NavigationLevel& navigation,const AngleTable& angles);
+bool try_fire_player_projectile(PlayerProjectile& projectile,const PlayerTank& tank,
+                                const PlayerInput& input,const AngleTable& angles);
+void update_player_projectile(PlayerProjectile& projectile,
+                              const NavigationLevel& navigation);
 
 static_assert(sizeof(PlanarMotion)==0x30);
 

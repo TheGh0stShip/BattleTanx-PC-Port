@@ -47,7 +47,8 @@ void draw_line(std::array<std::uint32_t,battletanx::native_width*battletanx::nat
 }
 
 void run_platform_diagnostic(const battletanx::WorldLevel& world,
-                             const battletanx::NavigationLevel& navigation) {
+                             const battletanx::NavigationLevel& navigation,
+                             const battletanx::AngleTable& angles) {
     auto platform=battletanx::Platform::create("BattleTanx native source port");
     std::array<std::uint32_t,battletanx::native_width*battletanx::native_height> pixels{};
     std::array<battletanx::ControllerPad,4> previous{};
@@ -75,21 +76,15 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     const auto screen_y=[&](float value) {
         return 32+static_cast<int>((value-min_z)/span_z*(battletanx::native_height-64));
     };
-    float cursor_x=static_cast<float>(battletanx::native_width/2);
-    float cursor_y=static_cast<float>(battletanx::native_height/2);
-    std::uint16_t anchor_triangle=0U;
-    for (std::size_t index=1U; index<navigation.triangles.size(); ++index) {
-        if (navigation.kind_enabled[navigation.triangles[index].kind]==0U) {
-            anchor_triangle=static_cast<std::uint16_t>(index);
-            break;
-        }
-    }
-    if (anchor_triangle==0U) throw std::runtime_error("level has no open navigation triangle");
-    const auto anchor=battletanx::navigation_triangle_centroid(navigation,anchor_triangle);
+    auto tank=battletanx::spawn_player_tank(navigation);
+    battletanx::PlayerProjectile projectile{};
     while (platform->pump(current)) {
         const auto frame_start=std::chrono::steady_clock::now();
         const auto input=battletanx::translate_player_input(current[0],previous[0]);
         previous=current;
+        battletanx::update_player_tank(tank,input,navigation,angles);
+        battletanx::try_fire_player_projectile(projectile,tank,input,angles);
+        battletanx::update_player_projectile(projectile,navigation);
         pixels.fill(0x00101820U);
         fill_rectangle(pixels,24,24,battletanx::native_width-48,4,0x00608090U);
         fill_rectangle(pixels,24,battletanx::native_height-28,
@@ -103,35 +98,27 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             const int y=screen_y(item.z);
             fill_rectangle(pixels,x-1,y-1,3,3,0x0060C070U);
         }
-        cursor_x=std::clamp(cursor_x+static_cast<float>(input.stick_x)*0.08F,
-                            32.0F,static_cast<float>(battletanx::native_width-32));
-        cursor_y=std::clamp(cursor_y-static_cast<float>(input.stick_y)*0.08F,
-                            32.0F,static_cast<float>(battletanx::native_height-32));
-        const battletanx::NavigationVertex query{
-            min_x+(cursor_x-32.0F)*span_x/static_cast<float>(battletanx::native_width-64),
-            min_z+(cursor_y-32.0F)*span_z/static_cast<float>(battletanx::native_height-64)};
-        const auto trace=battletanx::trace_navigation_segment(
-            navigation,anchor_triangle,anchor,query);
-        for (const auto edge : trace.edges) {
-            const auto& triangle=navigation.triangles[edge/3U];
-            const auto side=edge%3U;
-            const auto& a=navigation.vertices[triangle.corners[side].vertex];
-            const auto& b=navigation.vertices[triangle.corners[(side+1U)%3U].vertex];
-            draw_line(pixels,screen_x(a.x),screen_y(a.z),screen_x(b.x),screen_y(b.z),
-                      0x00408090U);
-        }
-        const bool reached=trace.stop==battletanx::NavigationTraceStop::target;
-        if (trace.triangle!=0U) {
-            const auto& corners=navigation.triangles[trace.triangle].corners;
+        if (tank.navigation_triangle!=0U) {
+            const auto& corners=navigation.triangles[tank.navigation_triangle].corners;
             for (std::size_t index=0; index<corners.size(); ++index) {
                 const auto& a=navigation.vertices[corners[index].vertex];
                 const auto& b=navigation.vertices[corners[(index+1U)%corners.size()].vertex];
                 draw_line(pixels,screen_x(a.x),screen_y(a.z),screen_x(b.x),screen_y(b.z),
-                          reached ? 0x00F0D040U : 0x00D06040U);
+                          0x00408090U);
             }
         }
-        fill_rectangle(pixels,static_cast<int>(cursor_x)-5,static_cast<int>(cursor_y)-5,10,10,
-                       reached ? 0x0040E080U : 0x004080C0U);
+        const auto heading=static_cast<std::uint16_t>(
+            tank.heading_degrees*(65536.0F/360.0F));
+        const int tank_x=screen_x(tank.x);
+        const int tank_y=screen_y(tank.z);
+        const int nose_x=screen_x(tank.x+angles.sine(heading)*80.0F);
+        const int nose_y=screen_y(tank.z+angles.cosine(heading)*80.0F);
+        fill_rectangle(pixels,tank_x-5,tank_y-5,10,10,0x0040E080U);
+        draw_line(pixels,tank_x,tank_y,nose_x,nose_y,0x00F0D040U);
+        if (projectile.active) {
+            fill_rectangle(pixels,screen_x(projectile.x)-2,screen_y(projectile.z)-2,
+                           5,5,0x00F08030U);
+        }
         platform->present(pixels,battletanx::native_width,battletanx::native_height);
         std::this_thread::sleep_until(frame_start+frame_period);
     }
@@ -191,7 +178,7 @@ int main(int argc, char** argv) {
                   << world_groups << " groups, " << world_items << " placements, "
                   << navigation_triangles << " navigation triangles\n";
         std::cout << "Native runtime foundation is ready; gameplay bring-up is in progress.\n";
-        if (show_window) run_platform_diagnostic(*preview_world,*preview_navigation);
+        if (show_window) run_platform_diagnostic(*preview_world,*preview_navigation,angles);
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';
         return 1;
