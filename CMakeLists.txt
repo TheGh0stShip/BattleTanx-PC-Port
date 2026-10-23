@@ -16,6 +16,7 @@ add_library(battletanx_core
     src/gameplay.cpp
     src/geometry.cpp
     src/host_input.cpp
+    src/hud.cpp
     src/level.cpp
     src/lzari.cpp
     src/material.cpp
@@ -129,3 +130,4 @@ add_runtime_test(enemy_tests)
 add_runtime_test(battle_session_tests)
 add_runtime_test(spawner_tests)
 add_runtime_test(pickup_tests)
+add_runtime_test(hud_tests)

@@ -6,6 +6,7 @@
 #include "battletanx/campaign_record.hpp"
 #include "battletanx/controller_pak.hpp"
 #include "battletanx/fixed_tick.hpp"
+#include "battletanx/hud.hpp"
 #include "battletanx/lzari.hpp"
 #include "battletanx/level.hpp"
 #include "battletanx/level_spawns.hpp"
@@ -53,6 +54,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::ModelAssets& assets,
                              const battletanx::SoundBank& sounds,
                              const battletanx::MusicTrack& music,
+                             const battletanx::HudAssets& hud_assets,
                              const std::array<std::uint32_t,pickup_model_kind_count>& pickup_models,
                              battletanx::CampaignRecord campaign,
                              const std::filesystem::path& pak_path) {
@@ -231,6 +233,19 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                     pickup_angle,pickup.x,pickup_y,pickup.z,angles),3U,0});
         }
         renderer.render(draw,assets);
+        battletanx::HudState hud;
+        hud.match_state=session.mission().state();
+        hud.score=session.owners()[0].score;
+        if (active_player) {
+            const auto* player=session.units().get(*active_player);
+            if (player!=nullptr) {
+                hud.health=player->health;
+                hud.max_health=player->max_health;
+                hud.primary_ammo=player->ammo[player->primary_weapon.kind];
+            }
+        }
+        battletanx::draw_player_hud(renderer.overlay_pixels(),
+            battletanx::native_width,battletanx::native_height,hud_assets,hud);
         if (!verified_native_frame) {
             const auto pixels=renderer.pixels();
             const auto visible=static_cast<std::size_t>(std::count_if(
@@ -308,6 +323,7 @@ int main(int argc, char** argv) {
         }
         std::cout << "Loaded retail 16-bit angle table: "
                   << battletanx::AngleTable::value_count << " samples\n";
+        const auto hud_assets=battletanx::load_hud_assets(rom);
         std::optional<battletanx::WorldLevel> preview_world;
         std::optional<battletanx::NavigationLevel> preview_navigation;
         std::size_t world_groups=0U;
@@ -362,7 +378,7 @@ int main(int argc, char** argv) {
         if (show_window) {
             run_platform_diagnostic(
                 *preview_world,*preview_navigation,angles,bindings,preview_assets,
-                sounds,*music,pickup_models,*campaign,pak_path);
+                sounds,*music,hud_assets,pickup_models,*campaign,pak_path);
         }
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';

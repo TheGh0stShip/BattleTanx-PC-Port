@@ -36,6 +36,7 @@ class SoftwareRenderer {
     SoftwareRenderer(int width,int height);
     void render(const DrawList& list,const ModelAssets& assets);
     [[nodiscard]] std::span<const std::uint32_t> pixels() const noexcept { return color_; }
+    [[nodiscard]] std::span<std::uint32_t> overlay_pixels() noexcept { return color_; }
 
   private:
     int width_{};
