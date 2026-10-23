@@ -385,8 +385,16 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
         }
         session.projectiles().for_each(
             [&](battletanx::EntityId,const battletanx::WeaponProjectile& shell) {
-            if (shell.effect_kind!=34U) return;
-            draw.items.push_back({assets.set_base()+0x24U,
+            // Effect 34's visible gun round uses slot 0x24. Retail cannon and
+            // spread rounds are primarily represented by their trail effects;
+            // keep the existing cannon fallback until those persistent effects
+            // are part of the native renderer. Effect 22 has its own confirmed
+            // rotating missile model at slot 0x41.
+            const std::optional<std::uint32_t> slot=shell.effect_kind==34U ?
+                std::optional<std::uint32_t>{0x24U} :
+                shell.effect_kind==22U ? std::optional<std::uint32_t>{0x41U} : std::nullopt;
+            if (!slot) return;
+            draw.items.push_back({assets.set_base()+*slot,
                 battletanx::yaw_translation_matrix(
                     shell.heading,shell.x,shell.y,shell.z,angles),3U,0});
         });
@@ -608,7 +616,7 @@ int main(int argc, char** argv) {
             std::optional<battletanx::MusicTrack> music;
             if (show_window) music=battletanx::render_music_sequence(
                 rom,static_cast<std::uint32_t>(wave->mission_id));
-            for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x52U}) {
+            for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x41U,0x52U}) {
                 if (active_assets.set_base()+slot>=active_assets.sets().size() ||
                     active_assets.set(active_assets.set_base()+slot).lod_count==0U) {
                     throw std::runtime_error("campaign level native model slot is absent");

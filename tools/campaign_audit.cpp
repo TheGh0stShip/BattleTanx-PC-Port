@@ -128,7 +128,9 @@ int main(int argc,char** argv) {
                 const std::size_t set=assets.set_base()+slot;
                 return set<assets.sets().size() && assets.set(set).lod_count!=0U;
             };
-            bool models_present=spawn.has_value() && slot_present(0x24U);
+            // The native weapon renderer currently consumes the retail gun
+            // round (0x24) and rotating missile (0x41) model slots.
+            bool models_present=spawn.has_value() && slot_present(0x24U) && slot_present(0x41U);
             if (spawn) {
                 for (const PlannedUnit& unit : spawn->units) {
                     for (const bool damaged : {false,true}) {
