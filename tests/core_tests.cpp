@@ -15,6 +15,7 @@
 #include "battletanx/resource.hpp"
 #include "battletanx/render_math.hpp"
 #include "battletanx/sha256.hpp"
+#include "battletanx/software_renderer.hpp"
 #include "battletanx/texture.hpp"
 
 #include <array>
@@ -57,6 +58,12 @@ int main() {
     CHECK(battletanx::fixed_rate_tick(1500000000U,30U)==45U);
     CHECK(battletanx::fixed_rate_tick(UINT64_MAX,0U)==0U);
     CHECK(battletanx::fixed_rate_tick(UINT64_MAX,30U)>UINT64_C(553000000000));
+    CHECK(battletanx::select_model_lod(1U,9999999.0F)==0U);
+    CHECK(battletanx::select_model_lod(2U,90000.0F)==0U);
+    CHECK(battletanx::select_model_lod(2U,90001.0F)==1U);
+    CHECK(battletanx::select_model_lod(3U,1000000.0F)==0U);
+    CHECK(battletanx::select_model_lod(3U,1000001.0F)==1U);
+    CHECK(battletanx::select_model_lod(3U,2890001.0F)==2U);
     {
         const auto projection=battletanx::perspective_matrix(
             37.0F,4.0F/3.0F,16.0F,5000.0F);

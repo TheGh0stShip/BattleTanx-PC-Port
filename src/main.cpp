@@ -58,6 +58,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         }
         battletanx::DrawList draw;
         const auto camera=battletanx::build_flat_tank_camera(tank,angles);
+        draw.eye=camera.eye;
         draw.view=battletanx::look_at_matrix(camera.eye,camera.target,camera.up);
         draw.projection=battletanx::perspective_matrix(
             camera.vertical_fov_degrees,camera.aspect_ratio,

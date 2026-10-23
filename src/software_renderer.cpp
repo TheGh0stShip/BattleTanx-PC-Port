@@ -87,6 +87,13 @@ SoftwareRenderer::SoftwareRenderer(int width,int height)
     if (width<=0 || height<=0) throw std::runtime_error("render target size is invalid");
 }
 
+std::size_t select_model_lod(std::uint8_t lod_count,float distance_squared) noexcept {
+    if (lod_count<=1U) return 0U;
+    if (lod_count==2U) return distance_squared>90000.0F ? 1U : 0U;
+    if (distance_squared>2890000.0F) return 2U;
+    return distance_squared>1000000.0F ? 1U : 0U;
+}
+
 void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
     std::fill(color_.begin(),color_.end(),0x00101820U);
     std::fill(depth_.begin(),depth_.end(),std::numeric_limits<float>::infinity());
@@ -97,7 +104,13 @@ void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
             const auto& set=assets.set(item.set);
             if (set.lod_count==0U) continue;
             const Matrix4 transform_matrix=multiply_matrix(view_projection,item.model);
-            for (const auto& part:set.lods[0]) {
+            const float distance_x=item.model[3]-list.eye.x;
+            const float distance_y=item.model[7]-list.eye.y;
+            const float distance_z=item.model[11]-list.eye.z;
+            const std::size_t lod=select_model_lod(
+                set.lod_count,distance_x*distance_x+distance_y*distance_y+
+                              distance_z*distance_z);
+            for (const auto& part:set.lods[lod]) {
                 const auto& mesh=assets.meshes()[part.mesh];
                 const auto& material=assets.materials()[part.material];
                 for (std::size_t triangle=0U; triangle+2U<mesh.indices.size(); triangle+=3U) {
