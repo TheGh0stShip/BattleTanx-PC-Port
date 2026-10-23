@@ -64,8 +64,9 @@ game's corner ordering for later collision and world-query integration.
 `--window` runs the native gameplay bring-up through the pinned SDL2 host
 library. It creates a native Linux or Windows window, maps keyboard and game
 controllers to the original controller representation, and presents a native
-pixel surface. It does not execute or translate N64 code. It plots decoded
-level-one retail placements and starts a player tank from the decoded retail
+pixel surface. It does not execute or translate N64 code. Its tank-following
+bring-up view plots nearby decoded level-one retail placements and starts a
+player tank from the decoded retail
 group-zero spawn marker on open navigation data.
 Drive with the left stick or WASD and fire the current test projectile with the
 south face button or X. Movement and projectile travel stop at navigation

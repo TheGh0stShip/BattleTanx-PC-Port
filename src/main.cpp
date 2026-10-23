@@ -12,7 +12,6 @@
 #include <cmath>
 #include <exception>
 #include <iostream>
-#include <limits>
 #include <optional>
 #include <string_view>
 #include <thread>
@@ -54,30 +53,15 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     std::array<battletanx::ControllerPad,4> previous{};
     std::array<battletanx::ControllerPad,4> current{};
     const auto frame_period=std::chrono::microseconds(16667);
-    float min_x=std::numeric_limits<float>::max();
-    float max_x=std::numeric_limits<float>::lowest();
-    float min_z=std::numeric_limits<float>::max();
-    float max_z=std::numeric_limits<float>::lowest();
-    for (const auto& item : world.items) {
-        if (!std::isfinite(item.x) || !std::isfinite(item.z)) continue;
-        min_x=std::min(min_x,item.x); max_x=std::max(max_x,item.x);
-        min_z=std::min(min_z,item.z); max_z=std::max(max_z,item.z);
-    }
-    for (const auto& vertex : navigation.vertices) {
-        if (!std::isfinite(vertex.x) || !std::isfinite(vertex.z)) continue;
-        min_x=std::min(min_x,vertex.x); max_x=std::max(max_x,vertex.x);
-        min_z=std::min(min_z,vertex.z); max_z=std::max(max_z,vertex.z);
-    }
-    const float span_x=std::max(max_x-min_x,1.0F);
-    const float span_z=std::max(max_z-min_z,1.0F);
-    const auto screen_x=[&](float value) {
-        return 32+static_cast<int>((value-min_x)/span_x*(battletanx::native_width-64));
-    };
-    const auto screen_y=[&](float value) {
-        return 32+static_cast<int>((value-min_z)/span_z*(battletanx::native_height-64));
-    };
     auto tank=battletanx::spawn_player_tank(world,navigation);
     battletanx::PlayerProjectile projectile{};
+    constexpr float view_scale=0.12F;
+    const auto screen_x=[&](float value) {
+        return battletanx::native_width/2+static_cast<int>((value-tank.x)*view_scale);
+    };
+    const auto screen_y=[&](float value) {
+        return battletanx::native_height/2-static_cast<int>((value-tank.z)*view_scale);
+    };
     while (platform->pump(current)) {
         const auto frame_start=std::chrono::steady_clock::now();
         const auto input=battletanx::translate_player_input(current[0],previous[0]);
