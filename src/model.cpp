@@ -2,6 +2,7 @@
 #include "battletanx/big_endian.hpp"
 #include "battletanx/material.hpp"
 
+#include <algorithm>
 #include <array>
 #include <map>
 #include <stdexcept>
@@ -26,7 +27,7 @@ std::span<const std::uint8_t> BlobView::at(
     return bytes_.subspan(offset,length);
 }
 
-Mesh decode_geometry_blob(std::span<const std::uint8_t> blob) {
+Mesh decode_geometry_blob(std::span<const std::uint8_t> blob,float color_scale) {
     constexpr std::size_t command_limit=4096U;
     const BigEndianView view(blob);
     Mesh mesh;
@@ -55,14 +56,18 @@ Mesh decode_geometry_blob(std::span<const std::uint8_t> blob) {
                     throw std::runtime_error("geometry vertex has a nonzero flag");
                 }
                 slots[index]=static_cast<std::uint32_t>(mesh.vertices.size());
+                const auto color=[&](std::size_t component) {
+                    return static_cast<std::uint8_t>(std::clamp(
+                        static_cast<float>(vertex_view.u8(vertex_offset+component))*color_scale,
+                        0.0F,255.0F));
+                };
                 mesh.vertices.push_back({
                     static_cast<float>(vertex_view.s16(vertex_offset)),
                     static_cast<float>(vertex_view.s16(vertex_offset+2U)),
                     static_cast<float>(vertex_view.s16(vertex_offset+4U)),
                     static_cast<float>(vertex_view.s16(vertex_offset+8U))/64.0F,
                     static_cast<float>(vertex_view.s16(vertex_offset+10U))/64.0F,
-                    vertex_view.u8(vertex_offset+12U),vertex_view.u8(vertex_offset+13U),
-                    vertex_view.u8(vertex_offset+14U),vertex_view.u8(vertex_offset+15U)});
+                    color(12U),color(13U),color(14U),vertex_view.u8(vertex_offset+15U)});
             }
             loaded=count;
             break;
@@ -133,7 +138,7 @@ ModelGeometryAudit audit_model_geometry(const Rom& rom,const WorldLevel& world) 
                 if (!geometry_added) continue;
                 const auto geometry=BlobView(
                     geometry_pool,{part.geometry_offset,part.geometry_size}).bytes();
-                const auto mesh=decode_geometry_blob(geometry);
+                const auto mesh=decode_geometry_blob(geometry,1.92F);
                 audit.vertices+=mesh.vertices.size();
                 audit.triangles+=mesh.indices.size()/3U;
             }
@@ -172,7 +177,7 @@ ModelAssets ModelAssets::load(const Rom& rom,const WorldLevel& world) {
                     const auto blob=BlobView(
                         geometry_pool,{source.geometry_offset,source.geometry_size}).bytes();
                     const auto handle=static_cast<std::uint32_t>(assets.meshes_.size());
-                    assets.meshes_.push_back(decode_geometry_blob(blob));
+                    assets.meshes_.push_back(decode_geometry_blob(blob,1.92F));
                     mesh_entry=mesh_cache.emplace(mesh_key,handle).first;
                 }
                 const auto material_key=std::tuple{

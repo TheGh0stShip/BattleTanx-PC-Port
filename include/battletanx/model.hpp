@@ -44,7 +44,7 @@ struct Mesh {
     std::vector<std::uint32_t> indices;
 };
 
-Mesh decode_geometry_blob(std::span<const std::uint8_t> blob);
+Mesh decode_geometry_blob(std::span<const std::uint8_t> blob,float color_scale=1.0F);
 
 struct ModelGeometryAudit {
     std::size_t part_references{};

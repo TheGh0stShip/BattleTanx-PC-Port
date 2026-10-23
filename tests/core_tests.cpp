@@ -96,6 +96,9 @@ int main() {
               mesh.vertices[0].z==-30.0F);
         CHECK(mesh.vertices[0].u==1.0F && mesh.vertices[0].v==2.0F);
         CHECK(mesh.indices[0]==0U && mesh.indices[1]==1U && mesh.indices[2]==2U);
+        const auto scaled_mesh=battletanx::decode_geometry_blob(geometry,1.92F);
+        CHECK(scaled_mesh.vertices[0].r==255U && scaled_mesh.vertices[0].g==245U &&
+              scaled_mesh.vertices[0].b==122U && scaled_mesh.vertices[0].a==255U);
         geometry[15U]=6U;
         rejected=false;
         try { static_cast<void>(battletanx::decode_geometry_blob(geometry)); }
