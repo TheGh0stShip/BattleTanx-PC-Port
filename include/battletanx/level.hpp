@@ -71,6 +71,19 @@ struct NavigationLevel {
     std::array<std::uint8_t,256> kind_enabled{};
 };
 
+enum class NavigationTraceStop {
+    target,
+    boundary,
+    blocked,
+    iteration_limit,
+};
+
+struct NavigationTrace {
+    std::vector<std::uint16_t> edges;
+    std::uint16_t triangle{};
+    NavigationTraceStop stop{NavigationTraceStop::boundary};
+};
+
 std::span<const LevelStreamDescriptor> level_stream_descriptors() noexcept;
 WorldLevel parse_world_level(std::span<const std::uint8_t> bytes);
 NavigationLevel parse_navigation_level(std::span<const std::uint8_t> bytes);
@@ -84,5 +97,10 @@ bool navigation_point_inside_triangle(const NavigationLevel& level,
                                       NavigationVertex point,std::uint16_t triangle);
 std::uint16_t find_nearest_navigation_triangle(const NavigationLevel& level,
                                                NavigationVertex point);
+NavigationTrace trace_navigation_segment(const NavigationLevel& level,
+                                         std::uint16_t start_triangle,
+                                         NavigationVertex from,
+                                         NavigationVertex to,
+                                         std::uint8_t blocked_mask=0xFFU);
 
 } // namespace battletanx

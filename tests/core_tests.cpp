@@ -124,6 +124,23 @@ int main() {
         CHECK(battletanx::find_nearest_navigation_triangle(nav,{2.0F,2.0F})==0U);
         nav.kind_enabled[5]=0U;
         CHECK(battletanx::find_nearest_navigation_triangle(nav,{2.0F,2.0F})==1U);
+        const auto contained=battletanx::trace_navigation_segment(
+            nav,1U,{2.0F,2.0F},{1.0F,1.0F});
+        CHECK(contained.stop==battletanx::NavigationTraceStop::target);
+        CHECK(contained.triangle==1U && contained.edges.empty());
+        const auto boundary=battletanx::trace_navigation_segment(
+            nav,1U,{2.0F,2.0F},{7.0F,7.0F});
+        CHECK(boundary.stop==battletanx::NavigationTraceStop::boundary);
+        CHECK(boundary.triangle==1U && boundary.edges.size()==1U);
+        auto neighbor=nav.triangles[1];
+        neighbor.kind=6U;
+        nav.triangles.push_back(neighbor);
+        nav.triangles[1].corners[boundary.edges[0]%3U].adjacent=6U;
+        nav.kind_enabled[6]=1U;
+        const auto blocked=battletanx::trace_navigation_segment(
+            nav,1U,{2.0F,2.0F},{7.0F,7.0F});
+        CHECK(blocked.stop==battletanx::NavigationTraceStop::blocked);
+        CHECK(blocked.triangle==2U && blocked.edges.size()==1U);
     }
 
     {

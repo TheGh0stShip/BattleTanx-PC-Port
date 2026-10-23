@@ -44,7 +44,9 @@ does not execute cartridge code.
   references, vertex references, and adjacency indices are checked first.
 - Recovered navigation queries operate on those host-owned records and retain
   the retail triangle orientation, blocked-kind lookup, and octagonal-distance
-  behavior without reproducing the original address space.
+  behavior without reproducing the original address space. Straight-line route
+  traversal uses serialized corner adjacency while preserving the retail
+  248-edge termination bound.
 - Linux x86-64 is normally LP64, while Windows x64 is LLP64. Neither host data
   model implicitly reproduces the N64 o32 ABI.
 

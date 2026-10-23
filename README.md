@@ -46,7 +46,9 @@ navigation streams, including group-to-placement ranges, shape references,
 navigation vertex references, and triangle adjacency bounds.
 Recovered navigation operations provide triangle centroids, edge midpoints,
 strict point containment, blocked-kind filtering, and the original octagonal
-nearest-cell search used during route initialization.
+nearest-cell search used during route initialization. Native straight-line
+route traversal follows the recovered corner-adjacency rules and reports
+target, boundary, blocked-cell, and retail 248-step limit outcomes.
 The portable core also contains deterministic recovered controller-state and
 planar-motion behavior covered by host tests.
 The original interpolated 16-bit angle behavior reads its 257-sample sine
@@ -61,7 +63,8 @@ pixel surface. This diagnostic is not gameplay and does not execute or
 translate N64 code. It plots the decoded level-one retail placements as an
 early level-data visualization. Move the highlighted navigation query with the
 left stick or WASD; its nearest triangle and containment result are drawn from
-the recovered native spatial-query path. Escape or closing the window exits.
+the recovered native spatial-query path, with crossed route edges shown along
+the way. Escape or closing the window exits.
 
 Up to four hot-pluggable SDL game controllers are assigned to ports in
 connection order. The left stick supplies the N64 analog stick, the D-pad and

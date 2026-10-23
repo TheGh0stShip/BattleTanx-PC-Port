@@ -57,6 +57,24 @@ void require_section_offsets(std::span<const std::uint8_t> bytes,
         throw std::runtime_error("level section offsets do not cover their decoded stream");
     }
 }
+
+bool cross_is_negative(NavigationVertex a,NavigationVertex origin,
+                       NavigationVertex point) {
+    const float az=a.z-origin.z;
+    const float ax=a.x-origin.x;
+    const float px=point.x-origin.x;
+    const float pz=point.z-origin.z;
+    return az*px-pz*ax<0.0F;
+}
+
+const NavigationCorner& navigation_corner(const NavigationLevel& level,
+                                          std::uint16_t corner) {
+    const std::size_t triangle=corner/3U;
+    if (triangle>=level.triangles.size()) {
+        throw std::out_of_range("navigation corner index is invalid");
+    }
+    return level.triangles[triangle].corners[corner%3U];
+}
 } // namespace
 
 std::span<const LevelStreamDescriptor> level_stream_descriptors() noexcept { return kLevels; }
@@ -154,6 +172,9 @@ NavigationLevel parse_navigation_level(std::span<const std::uint8_t> bytes) {
     }
     const std::size_t vertex_count=view.u16(8U);
     const std::size_t triangle_count=view.u16(0xAU);
+    if (triangle_count>std::numeric_limits<std::uint16_t>::max()/3U) {
+        throw std::runtime_error("navigation stream has too many flattened corners");
+    }
     std::array<std::size_t,5> offsets{};
     for (std::size_t index=0; index<offsets.size(); ++index) {
         offsets[index]=view.u32(0xCU+index*4U);
@@ -267,11 +288,7 @@ bool navigation_point_inside_triangle(const NavigationLevel& level,
             corners[next].vertex>=level.vertices.size()) return false;
         const auto& a=level.vertices[corners[index].vertex];
         const auto& origin=level.vertices[corners[next].vertex];
-        const float az=a.z-origin.z;
-        const float ax=a.x-origin.x;
-        const float px=point.x-origin.x;
-        const float pz=point.z-origin.z;
-        if (!(az*px-pz*ax<0.0F)) return false;
+        if (!cross_is_negative(a,origin,point)) return false;
     }
     return true;
 }
@@ -299,6 +316,92 @@ std::uint16_t find_nearest_navigation_triangle(const NavigationLevel& level,
         }
     }
     return nearest;
+}
+
+NavigationTrace trace_navigation_segment(const NavigationLevel& level,
+                                         std::uint16_t start_triangle,
+                                         NavigationVertex from,
+                                         NavigationVertex to,
+                                         std::uint8_t blocked_mask) {
+    if (level.triangles.size()>std::numeric_limits<std::uint16_t>::max()/3U) {
+        throw std::length_error("navigation level has too many flattened corners");
+    }
+    if (start_triangle==0U || start_triangle>=level.triangles.size()) {
+        throw std::out_of_range("navigation trace start triangle is invalid");
+    }
+    NavigationTrace result;
+    result.triangle=start_triangle;
+    if (navigation_point_inside_triangle(level,to,start_triangle)) {
+        result.stop=NavigationTraceStop::target;
+        return result;
+    }
+
+    const auto select_edge=[&](std::uint16_t triangle) {
+        const auto& corners=level.triangles[triangle].corners;
+        std::array<bool,3> sides{};
+        for (std::size_t index=0; index<sides.size(); ++index) {
+            const auto vertex=corners[index].vertex;
+            if (vertex==0U || vertex>=level.vertices.size()) {
+                throw std::out_of_range("navigation trace vertex index is invalid");
+            }
+            sides[index]=cross_is_negative(from,level.vertices[vertex],to);
+        }
+        for (std::size_t index=0; index<sides.size(); ++index) {
+            if (sides[index] && !sides[(index+1U)%sides.size()]) {
+                return static_cast<std::uint16_t>(triangle*3U+index);
+            }
+        }
+        return std::uint16_t{0};
+    };
+
+    std::uint16_t edge=select_edge(start_triangle);
+    if (edge==0U) return result;
+    for (std::size_t attempt=0; attempt<0xF8U; ++attempt) {
+        result.edges.push_back(edge);
+        const std::size_t triangle=edge/3U;
+        const std::size_t side=edge%3U;
+        const auto& corners=level.triangles[triangle].corners;
+        const auto first=corners[side].vertex;
+        const auto second=corners[(side+1U)%3U].vertex;
+        if (first==0U || second==0U || first>=level.vertices.size() ||
+            second>=level.vertices.size()) {
+            throw std::out_of_range("navigation trace edge vertex index is invalid");
+        }
+        if (cross_is_negative(level.vertices[first],level.vertices[second],to)) {
+            result.triangle=static_cast<std::uint16_t>(triangle);
+            result.stop=NavigationTraceStop::target;
+            return result;
+        }
+        const std::uint16_t adjacent=navigation_corner(level,edge).adjacent;
+        if (adjacent==0U) {
+            result.triangle=static_cast<std::uint16_t>(triangle);
+            result.stop=NavigationTraceStop::boundary;
+            return result;
+        }
+        const std::uint16_t next_triangle=adjacent/3U;
+        if (next_triangle==0U || next_triangle>=level.triangles.size()) {
+            throw std::out_of_range("navigation trace adjacency is invalid");
+        }
+        const auto status=level.kind_enabled[level.triangles[next_triangle].kind];
+        if ((status&blocked_mask)!=0U) {
+            result.triangle=next_triangle;
+            result.stop=NavigationTraceStop::blocked;
+            return result;
+        }
+        const std::uint16_t next_side=static_cast<std::uint16_t>((adjacent+2U)%3U);
+        const auto& next_corners=level.triangles[next_triangle].corners;
+        const auto vertex=next_corners[next_side].vertex;
+        if (vertex==0U || vertex>=level.vertices.size()) {
+            throw std::out_of_range("navigation trace vertex index is invalid");
+        }
+        const std::uint16_t base=static_cast<std::uint16_t>(next_triangle*3U);
+        edge=cross_is_negative(from,level.vertices[vertex],to)
+            ? static_cast<std::uint16_t>(base+next_side)
+            : static_cast<std::uint16_t>(base+(next_side+2U)%3U);
+        result.triangle=next_triangle;
+    }
+    result.stop=NavigationTraceStop::iteration_limit;
+    return result;
 }
 
 } // namespace battletanx

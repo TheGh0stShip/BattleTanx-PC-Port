@@ -77,6 +77,15 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     };
     float cursor_x=static_cast<float>(battletanx::native_width/2);
     float cursor_y=static_cast<float>(battletanx::native_height/2);
+    std::uint16_t anchor_triangle=0U;
+    for (std::size_t index=1U; index<navigation.triangles.size(); ++index) {
+        if (navigation.kind_enabled[navigation.triangles[index].kind]==0U) {
+            anchor_triangle=static_cast<std::uint16_t>(index);
+            break;
+        }
+    }
+    if (anchor_triangle==0U) throw std::runtime_error("level has no open navigation triangle");
+    const auto anchor=battletanx::navigation_triangle_centroid(navigation,anchor_triangle);
     while (platform->pump(current)) {
         const auto frame_start=std::chrono::steady_clock::now();
         const auto input=battletanx::translate_player_input(current[0],previous[0]);
@@ -101,20 +110,28 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         const battletanx::NavigationVertex query{
             min_x+(cursor_x-32.0F)*span_x/static_cast<float>(battletanx::native_width-64),
             min_z+(cursor_y-32.0F)*span_z/static_cast<float>(battletanx::native_height-64)};
-        const auto nearest=battletanx::find_nearest_navigation_triangle(navigation,query);
-        const bool inside=nearest!=0U &&
-            battletanx::navigation_point_inside_triangle(navigation,query,nearest);
-        if (nearest!=0U) {
-            const auto& corners=navigation.triangles[nearest].corners;
+        const auto trace=battletanx::trace_navigation_segment(
+            navigation,anchor_triangle,anchor,query);
+        for (const auto edge : trace.edges) {
+            const auto& triangle=navigation.triangles[edge/3U];
+            const auto side=edge%3U;
+            const auto& a=navigation.vertices[triangle.corners[side].vertex];
+            const auto& b=navigation.vertices[triangle.corners[(side+1U)%3U].vertex];
+            draw_line(pixels,screen_x(a.x),screen_y(a.z),screen_x(b.x),screen_y(b.z),
+                      0x00408090U);
+        }
+        const bool reached=trace.stop==battletanx::NavigationTraceStop::target;
+        if (trace.triangle!=0U) {
+            const auto& corners=navigation.triangles[trace.triangle].corners;
             for (std::size_t index=0; index<corners.size(); ++index) {
                 const auto& a=navigation.vertices[corners[index].vertex];
                 const auto& b=navigation.vertices[corners[(index+1U)%corners.size()].vertex];
                 draw_line(pixels,screen_x(a.x),screen_y(a.z),screen_x(b.x),screen_y(b.z),
-                          inside ? 0x00F0D040U : 0x00D06040U);
+                          reached ? 0x00F0D040U : 0x00D06040U);
             }
         }
         fill_rectangle(pixels,static_cast<int>(cursor_x)-5,static_cast<int>(cursor_y)-5,10,10,
-                       inside ? 0x0040E080U : 0x004080C0U);
+                       reached ? 0x0040E080U : 0x004080C0U);
         platform->present(pixels,battletanx::native_width,battletanx::native_height);
         std::this_thread::sleep_until(frame_start+frame_period);
     }
