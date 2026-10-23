@@ -123,7 +123,8 @@ void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
     std::fill(color_.begin(),color_.end(),0x00101820U);
     std::fill(depth_.begin(),depth_.end(),std::numeric_limits<float>::infinity());
     const Matrix4 view_projection=multiply_matrix(list.projection,list.view);
-    for (std::uint8_t layer:{0U,6U,5U,1U,2U,3U,4U}) {
+    constexpr std::array<std::uint8_t,7> layer_order{0U,6U,5U,1U,2U,3U,4U};
+    for (const std::uint8_t layer:layer_order) {
         for (const auto& item:list.items) {
             if (item.layer!=layer) continue;
             const auto& set=assets.set(item.set);
