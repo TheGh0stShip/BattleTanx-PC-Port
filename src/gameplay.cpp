@@ -191,13 +191,16 @@ void update_player_tank(PlayerTank& tank,const DriveInput& input,
     }
 }
 
-bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
+bool try_fire_player_projectile(PlayerProjectilePool& projectiles,PlayerTank& tank,
                                 const DriveInput& input,const WorldLevel& world,
                                 const NavigationLevel& navigation,const AngleTable& angles,
                                 std::int32_t game_tick) {
     constexpr std::int32_t cooldown=30;
-    if (projectile.active || !input.fire || tank.primary_ammo<=0 ||
+    if (!input.fire || tank.primary_ammo<=0 ||
         tank.primary_last_tick+cooldown>=game_tick) return false;
+    auto projectile=std::find_if(projectiles.begin(),projectiles.end(),
+                                 [](const PlayerProjectile& value) { return !value.active; });
+    if (projectile==projectiles.end()) return false;
     constexpr float muzzle_offset=45.0F;
     constexpr float projectile_speed=110.0F;
     const auto angle=degrees_to_angle(tank.turret_degrees);
@@ -221,17 +224,18 @@ bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
                  static_cast<float>(shape.max_x),static_cast<float>(shape.min_z),
                  static_cast<float>(shape.max_z),item.angle},angles)) return false;
     }
-    projectile={muzzle.x,muzzle.z,
-                direction_x*projectile_speed,direction_z*projectile_speed,
-                trace.triangle,112U,true};
+    *projectile={muzzle.x,muzzle.z,
+                 direction_x*projectile_speed,direction_z*projectile_speed,
+                 trace.triangle,112U,true};
     tank.primary_last_tick=game_tick;
     --tank.primary_ammo;
     return true;
 }
 
-void update_player_projectile(PlayerProjectile& projectile,
-                              const WorldLevel& world,const NavigationLevel& navigation,
-                              const AngleTable& angles) {
+namespace {
+
+void update_player_projectile(PlayerProjectile& projectile,const WorldLevel& world,
+                              const NavigationLevel& navigation,const AngleTable& angles) {
     if (!projectile.active) return;
     const NavigationVertex from{projectile.x,projectile.z};
     const NavigationVertex candidate{
@@ -263,6 +267,16 @@ void update_player_projectile(PlayerProjectile& projectile,
     projectile.z=candidate.z;
     projectile.navigation_triangle=trace.triangle;
     --projectile.frames_remaining;
+}
+
+} // namespace
+
+void update_player_projectiles(PlayerProjectilePool& projectiles,
+                               const WorldLevel& world,const NavigationLevel& navigation,
+                               const AngleTable& angles) {
+    for (auto& projectile:projectiles) {
+        update_player_projectile(projectile,world,navigation,angles);
+    }
 }
 
 } // namespace battletanx

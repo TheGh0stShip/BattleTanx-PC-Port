@@ -74,6 +74,8 @@ struct PlayerProjectile {
     bool active{};
 };
 
+using PlayerProjectilePool=std::array<PlayerProjectile,32>;
+
 void advance_planar_motion(PlanarMotion& motion, float elapsed_seconds);
 PlayerInput translate_player_input(const ControllerPad& current,
                                    const ControllerPad& previous);
@@ -83,13 +85,13 @@ PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navi
 void update_player_tank(PlayerTank& tank,const DriveInput& input,
                         const WorldLevel& world,const NavigationLevel& navigation,
                         const AngleTable& angles);
-bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
+bool try_fire_player_projectile(PlayerProjectilePool& projectiles,PlayerTank& tank,
                                 const DriveInput& input,const WorldLevel& world,
                                 const NavigationLevel& navigation,const AngleTable& angles,
                                 std::int32_t game_tick);
-void update_player_projectile(PlayerProjectile& projectile,
-                              const WorldLevel& world,const NavigationLevel& navigation,
-                              const AngleTable& angles);
+void update_player_projectiles(PlayerProjectilePool& projectiles,
+                               const WorldLevel& world,const NavigationLevel& navigation,
+                               const AngleTable& angles);
 
 static_assert(sizeof(PlanarMotion)==0x30);
 

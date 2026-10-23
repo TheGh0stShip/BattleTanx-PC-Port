@@ -53,8 +53,8 @@ The portable core also contains deterministic recovered controller-state and
 planar-motion behavior covered by host tests. The default controller binding
 preset is decoded from the verified retail ROM and evaluated with the recovered
 analog/digital axis rules. The first native gameplay slice
-adds a player-tank state, navigation-constrained movement, and a single
-bounded projectile. The current M1A1 drive slice uses its recovered retail
+adds a player-tank state, navigation-constrained movement, and a bounded
+projectile pool. The current M1A1 drive slice uses its recovered retail
 turn, acceleration, grip, drag, and rotated footprint. Static collision uses
 the recovered level-object type filter and each object's rotated level shape.
 The temporary top-down

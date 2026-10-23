@@ -56,7 +56,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     std::array<battletanx::ControllerPad,4> current{};
     const auto frame_period=std::chrono::microseconds(33333);
     auto tank=battletanx::spawn_player_tank(world,navigation);
-    battletanx::PlayerProjectile projectile{};
+    battletanx::PlayerProjectilePool projectiles{};
     std::int32_t game_tick=0;
     constexpr float view_scale=0.12F;
     const auto screen_x=[&](float value) {
@@ -72,8 +72,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         previous=current;
         battletanx::update_player_tank(tank,input,world,navigation,angles);
         battletanx::try_fire_player_projectile(
-            projectile,tank,input,world,navigation,angles,game_tick);
-        battletanx::update_player_projectile(projectile,world,navigation,angles);
+            projectiles,tank,input,world,navigation,angles,game_tick);
+        battletanx::update_player_projectiles(projectiles,world,navigation,angles);
         ++game_tick;
         pixels.fill(0x00101820U);
         fill_rectangle(pixels,24,24,battletanx::native_width-48,4,0x00608090U);
@@ -110,7 +110,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         fill_rectangle(pixels,tank_x-5,tank_y-5,10,10,0x0040E080U);
         draw_line(pixels,tank_x,tank_y,nose_x,nose_y,0x0080A050U);
         draw_line(pixels,tank_x,tank_y,turret_x,turret_y,0x00F0D040U);
-        if (projectile.active) {
+        for (const auto& projectile:projectiles) {
+            if (!projectile.active) continue;
             fill_rectangle(pixels,screen_x(projectile.x)-2,screen_y(projectile.z)-2,
                            5,5,0x00F08030U);
         }
