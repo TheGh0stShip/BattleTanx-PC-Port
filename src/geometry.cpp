@@ -6,18 +6,15 @@ std::array<PlanarPoint,4> rotated_rect_corners(
     const RotatedRect& rect,const AngleTable& angles) {
     const float sine=-angles.sine(rect.angle);
     const float cosine=angles.cosine(rect.angle);
-    const auto point=[&](std::int16_t u,std::int16_t v) {
-        return PlanarPoint{
-            sine*static_cast<float>(u)+cosine*static_cast<float>(v)+rect.origin_x,
-            cosine*static_cast<float>(u)-sine*static_cast<float>(v)+rect.origin_z,
-        };
-    };
-    const std::array corners{
-        point(rect.min_u,rect.min_v),
-        point(rect.min_u,rect.max_v),
-        point(rect.max_u,rect.max_v),
-        point(rect.max_u,rect.min_v),
-    };
+    std::array<PlanarPoint,4> corners{};
+    corners[0].z=cosine*rect.min_u-sine*rect.min_v+rect.origin_z;
+    corners[0].x=sine*rect.min_u+cosine*rect.min_v+rect.origin_x;
+    corners[1].z=cosine*rect.min_u-sine*rect.max_v+rect.origin_z;
+    corners[1].x=sine*rect.min_u+cosine*rect.max_v+rect.origin_x;
+    corners[2].z=cosine*rect.max_u-sine*rect.max_v+rect.origin_z;
+    corners[2].x=sine*rect.max_u+cosine*rect.max_v+rect.origin_x;
+    corners[3].z=cosine*rect.max_u-sine*rect.min_v+rect.origin_z;
+    corners[3].x=sine*rect.max_u+cosine*rect.min_v+rect.origin_x;
     std::size_t first=0U;
     for (std::size_t index=1U; index<corners.size(); ++index) {
         if (corners[index].z<corners[first].z) first=index;
