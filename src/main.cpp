@@ -717,6 +717,15 @@ WaveRunResult run_platform_diagnostic(battletanx::Platform& platform,
                 static_cast<std::int8_t>((game_tick/8U)%2U) : std::int8_t{0};
             draw.items.push_back({assets.set_base()+visual->model_slot,transform,3U,phase});
         });
+        for (const auto& bullet:bridge.turret_bullets()) {
+            // visit_level_points_near_effect draws only bullet kind 1.
+            if (bullet.bullet_kind!=1U) continue;
+            const auto visual=battletanx::projectile_visual(34U);
+            if (!visual) continue;
+            draw.items.push_back({assets.set_base()+visual->model_slot,
+                battletanx::yaw_translation_matrix(
+                    bullet.heading,bullet.x,bullet.y,bullet.z,angles),3U,0});
+        }
         battletanx::effects::EffectRenderQueue effect_draws;
         bridge.effect_runtime().collect(effect_draws);
         for (const auto& effect:effect_draws.events()) {

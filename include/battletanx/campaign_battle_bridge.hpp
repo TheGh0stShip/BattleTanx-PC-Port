@@ -249,7 +249,8 @@ private:
     void run_placed(BattleSession& session,std::uint16_t clock,TickReport& report);
     void run_turret_bullets(BattleSession& session,TickReport& report);
     void apply_contact_replies(const UnitRecord& unit,std::size_t slot,std::size_t first,TickReport& report);
-    void fire_turret_shot(BattleSession& session,const placed::Event& event,TickReport& report);
+    void fire_turret_shot(BattleSession& session,const placed::Event& event,std::uint16_t clock,
+                          TickReport& report);
     void refresh_squad_context(BattleSession& session);
     void reset_squad_context() noexcept;
     void run_spawners(BattleSession& session,TickReport& report);

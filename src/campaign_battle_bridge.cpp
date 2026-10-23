@@ -279,7 +279,7 @@ void Bridge::run_placed(BattleSession& session,std::uint16_t clock,TickReport& r
     for (const placed::Event& event : placed_.events()) {
         switch (event.kind) {
         case placed::EventKind::shot_fired:
-            fire_turret_shot(session,event,report);
+            fire_turret_shot(session,event,clock,report);
             break;
         case placed::EventKind::splash:
             static_cast<void>(splash_units(session,event.x,event.z,battletanx::placed_splash_radius,
@@ -331,7 +331,8 @@ void Bridge::apply_contact_replies(const UnitRecord& unit,std::size_t slot,std::
 }
 
 // Bullet (type 0..2) or beam (type 3) from a turret event.
-void Bridge::fire_turret_shot(BattleSession& session,const placed::Event& event,TickReport& report) {
+void Bridge::fire_turret_shot(BattleSession& session,const placed::Event& event,std::uint16_t clock,
+                              TickReport& report) {
     if (!event.shot) return;
     const TurretShot& shot=*event.shot;
     // update_turret.c: muzzle y = D_80125FD0.y * D_80126038[type] (visual).
@@ -350,13 +351,24 @@ void Bridge::fire_turret_shot(BattleSession& session,const placed::Event& event,
         const float ez=shot.z+angles_.cosine(shot.heading)*turret_beam_length;
         const std::optional<UnitSegmentHit> unit_hit=find_unit_segment_hit(session.units(),angles_,
             shot.x,shot.z,ex,ez,no_entity);
-        if (!unit_hit) return;
-        if (config_.world.segment) {
-            const std::optional<SegmentHit> wall=config_.world.segment(shot.x,shot.z,ex,ez);
-            if (wall && wall->distance<unit_hit->distance) return;
+        const std::optional<SegmentHit> wall=config_.world.segment ?
+            config_.world.segment(shot.x,shot.z,ex,ez) : std::nullopt;
+        float length=turret_beam_length;
+        if (wall) length=std::min(length,wall->distance);
+        if (unit_hit && unit_hit->distance<=length) {
+            length=unit_hit->distance;
+            if (session.apply_damage(unit_hit->unit,damage,event.owner,false)!=DamageResult::ignored)
+                bump(report.turret_shots_applied);
         }
-        if (session.apply_damage(unit_hit->unit,damage,event.owner,false)!=DamageResult::ignored)
-            bump(report.turret_shots_applied);
+        EffectEvent beam;
+        beam.kind=EffectEventKind::beam;
+        beam.variant=turret_beam_variant;
+        beam.owner=event.owner;
+        beam.x=shot.x; beam.y=y; beam.z=shot.z;
+        beam.angle=shot.heading;
+        beam.length=length;
+        if (effects_.consume(beam,clock)==effects::EventMapping::spawned)
+            bump(report.effect_spawns);
         return;
     }
     if (bullets_.size()>=turret_bullet_capacity) { bump(report.turret_shots_dropped); return; }
