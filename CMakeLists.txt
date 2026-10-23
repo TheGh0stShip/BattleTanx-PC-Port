@@ -138,7 +138,7 @@ add_runtime_test(hud_tests)
 install(TARGETS BattleTanx
     RUNTIME DESTINATION .
     COMPONENT Runtime)
-install(FILES README.md
+install(FILES README.md COPYING
     DESTINATION .
     COMPONENT Runtime)
 

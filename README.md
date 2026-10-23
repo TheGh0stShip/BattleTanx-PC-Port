@@ -67,10 +67,11 @@ cmake --build build --target package --parallel
 ```
 
 Linux packages are `.tar.gz` archives and Windows packages are `.zip`
-archives. A SHA-256 sidecar is generated beside each archive. Extract the
-archive anywhere, then launch `BattleTanx` (`BattleTanx.exe` on Windows) with
-the ROM path. Official build artifacts are available from successful workflow
-runs; they intentionally contain neither a ROM nor extracted retail assets.
+archives. Each contains the executable, README, and license text. A SHA-256
+sidecar is generated beside each archive. Extract the archive anywhere, then
+launch `BattleTanx` (`BattleTanx.exe` on Windows) with the ROM path. Official
+build artifacts are available from successful workflow runs; they
+intentionally contain neither a ROM nor extracted retail assets.
 
 The current executable implements the portable build and ROM-loading boundary.
 It validates the complete ROM, decompresses all 21 audited retail resource
