@@ -1,5 +1,7 @@
 #include "battletanx/level_spawns.hpp"
 
+#include "battletanx/spawner_runtime.hpp"
+
 #include <algorithm>
 
 namespace battletanx {
@@ -218,13 +220,18 @@ std::uint8_t pick_effect_kind(std::uint8_t kind,bool reroll_option,RetailRandom&
 std::vector<PickupPlacement> distribute_random_pickups(
     const LevelSpawnPlan& plan,
     const std::array<std::int32_t,pickup_spawn_count_kinds>& spawn_counts,
-    RetailRandom& rng) {
+    RetailRandom& rng,bool reroll_option) {
     std::vector<PickupPlacement> placed;
     if (!plan.random_distribution_allowed) return placed;
-    std::int32_t total=0;
-    for (const std::int32_t count : spawn_counts) total+=count;
-    const auto spot_count=static_cast<std::uint32_t>(plan.random_spots.size());
-    if (static_cast<std::int64_t>(spot_count)<total || spot_count==0U) return placed;
+    // Sum in 64 bits: caller-supplied counts must not overflow, and a negative
+    // count would let a later positive count exceed the free spots and spin.
+    std::int64_t total=0;
+    for (const std::int32_t count : spawn_counts) {
+        if (count<0) return placed;
+        total+=count;
+    }
+    const auto spot_count=static_cast<std::uint32_t>(std::min(plan.random_spots.size(),max_random_pickup_spots));
+    if (spot_count==0U || static_cast<std::int64_t>(spot_count)<total) return placed;
     std::vector<bool> used(spot_count,false);
     for (std::size_t kind=0U; kind<spawn_counts.size(); ++kind) {
         for (std::int32_t j=0; j<spawn_counts[kind]; ++j) {
@@ -234,7 +241,9 @@ std::vector<PickupPlacement> distribute_random_pickups(
             } while (used[spot]);
             used[spot]=true;
             PickupPlacement pickup=plan.random_spots[spot];
-            pickup.kind=static_cast<std::uint8_t>(kind);
+            // func_80088670 tail: the spot draw(s) for this copy, then the
+            // pick_effect_kind draw (only with D_80134E68 and a re-roll kind).
+            pickup.kind=pick_effect_kind(static_cast<std::uint8_t>(kind),reroll_option,rng);
             placed.push_back(pickup);
         }
     }
@@ -253,60 +262,52 @@ SpawnerUpdateResult update_spawner(SpawnerState& spawner,
                                    const std::optional<LinkedEffectView>& linked,
                                    SpawnerOwnerView& owner,std::int32_t tick,
                                    RetailRandom& rng,const SpawnAreaClear& area_clear) {
-    SpawnerUpdateResult result;
+    namespace sr=spawner_runtime;
     const SpawnerDefinition& def=spawner.definition;
-    if (spawner.finished) {
-        result.status=SpawnerUpdateStatus::finished;
-        return result;
-    }
-    if (def.linked) {
-        if (!linked.has_value() || linked->serial!=spawner.linked_serial) {
-            spawner.finished=true;
-            result.status=SpawnerUpdateStatus::finished;
+    const std::size_t owner_index=def.owner&3U;
+    sr::OwnerSpawnRecords owners{};
+    sr::OwnerSpawnRecord& record=owners[owner_index];
+    record.budget=owner.budget;
+    record.gate_open=owner.gate_open;
+    record.unit_active=owner.squad_slot_alive;
+    // The legacy callback already applies the grid rules and returns one
+    // verdict; a blocked area becomes one blocking hit.
+    sr::AreaQuery query;
+    if (area_clear) {
+        query=[&area_clear,&def](const sr::AreaBox& box) {
+            const SpawnAreaQuery legacy{def.x,def.z,box.angle,
+                                        static_cast<std::uint8_t>(def.mode==0U ? 0U : def.mode==1U ? 1U : 2U)};
+            sr::AreaQueryResult result;
+            result.found=true;
+            if (!area_clear(legacy)) {
+                result.hits.push_back(sr::AreaHit{.reserved_handle=false,.kind=0,.object_token=0U,
+                                                  .is_linked_effect=false});
+            }
             return result;
-        }
-        if (linked->destroyed) {
-            spawner.finished=true;
-            result.status=SpawnerUpdateStatus::finished_destroyed;
-            return result;
-        }
+        };
     }
-    if ((def.parameter==0x45U || def.gate_bits==1U) && !owner.gate_open) {
-        result.status=SpawnerUpdateStatus::gated;
-        return result;
+    sr::SpawnOrderQueue queue{1U};
+    const sr::SpawnerTickResult tick_result=sr::tick_spawner(spawner,linked,0,tick,owners,rng,query,queue);
+    owner.budget=record.budget;   // squad_slot_alive stays caller-owned
+    SpawnerUpdateResult result;
+    switch (tick_result.status) {
+    case sr::SpawnerTickStatus::finished: result.status=SpawnerUpdateStatus::finished; break;
+    case sr::SpawnerTickStatus::finished_destroyed: result.status=SpawnerUpdateStatus::finished_destroyed; break;
+    case sr::SpawnerTickStatus::gated: result.status=SpawnerUpdateStatus::gated; break;
+    case sr::SpawnerTickStatus::interval_pending: result.status=SpawnerUpdateStatus::interval_pending; break;
+    case sr::SpawnerTickStatus::roll_failed: result.status=SpawnerUpdateStatus::roll_failed; break;
+    case sr::SpawnerTickStatus::no_budget: result.status=SpawnerUpdateStatus::no_budget; break;
+    case sr::SpawnerTickStatus::area_blocked: result.status=SpawnerUpdateStatus::area_blocked; break;
+    case sr::SpawnerTickStatus::no_free_member: result.status=SpawnerUpdateStatus::no_free_slot; break;
+    case sr::SpawnerTickStatus::order_queue_full: result.status=SpawnerUpdateStatus::no_free_slot; break; // capacity 1: unreachable
+    case sr::SpawnerTickStatus::spawned: result.status=SpawnerUpdateStatus::spawned; break;
     }
-    if (spawner.last_tick+def.interval_ticks>=tick) {
-        result.status=SpawnerUpdateStatus::interval_pending;
-        return result;
+    if (tick_result.status==sr::SpawnerTickStatus::spawned && !queue.orders().empty()) {
+        const sr::SpawnOrder& order=queue.orders().front();
+        result.request=SpawnRequest{.owner=def.owner,.squad_slot=order.member_slot,.x=order.x,.z=order.z,
+                                    .heading=order.heading,.shape=static_cast<std::uint8_t>(order.kind),
+                                    .parameter=order.parameter,.tick=order.tick};
     }
-    if ((rng.next_u32()&0xFU)!=0U) {
-        result.status=SpawnerUpdateStatus::roll_failed;
-        return result;
-    }
-    if (owner.budget==0) {
-        result.status=SpawnerUpdateStatus::no_budget;
-        return result;
-    }
-    std::uint8_t shape=def.shape;
-    if (def.mode==3U) {
-        (void)rng.next_u32();  // retail draws a bit; both outcomes give shape 2
-        shape=2U;
-    }
-    const SpawnAreaQuery query{def.x,def.z,static_cast<std::uint16_t>(def.heading+0x200U),shape};
-    if (area_clear && !area_clear(query)) {
-        result.status=SpawnerUpdateStatus::area_blocked;
-        return result;
-    }
-    for (std::size_t slot=0U; slot<owner.squad_slot_alive.size(); ++slot) {
-        if (owner.squad_slot_alive[slot]) continue;
-        result.request=SpawnRequest{def.owner,static_cast<std::uint8_t>(slot),def.x,def.z,
-                                    def.heading,shape,def.parameter,tick};
-        spawner.last_tick=tick;
-        if (owner.budget>0) --owner.budget;
-        result.status=SpawnerUpdateStatus::spawned;
-        return result;
-    }
-    result.status=SpawnerUpdateStatus::no_free_slot;
     return result;
 }
 

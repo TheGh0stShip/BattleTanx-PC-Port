@@ -1,13 +1,14 @@
 #pragma once
 
+#include "battletanx/angle.hpp"
 #include "battletanx/deterministic_rng.hpp"
 #include "battletanx/entity_id.hpp"
 #include "battletanx/runtime_events.hpp"
 #include "battletanx/unit_runtime.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <span>
 
 namespace battletanx {
@@ -57,30 +58,42 @@ struct PickupCollector {
     EntityId id{};
     UnitRecord* unit{};
     std::uint8_t owner_class{};         // owner record +0x1AE (func_8009FBE4)
-    std::uint8_t state_350{};           // unit +0x350; 2 = AI-driven, cannot collect
+    std::uint8_t state_350{};           // unit +0x350; 2 = computer-controlled, cannot collect
 };
 
 struct PickupCollectResult {
     std::size_t collected{};
     std::size_t unsupported{};
 };
-using PickupApply=std::function<bool(PickupCollector&,std::uint8_t)>;
 
+// Responsibility boundary: this module owns the world-side pickup record
+// (creation gate, contact, respawn/removal, weight re-roll). The effect of a
+// kind on a unit and its owner lives in pickup_effects; contact eligibility,
+// targetability, shields, ammo rules and the random-spot distribution live in
+// powerup_state.
+
+// Uses the deterministic reference angle table.
 [[nodiscard]] bool pickup_overlaps(const PickupRecord& pickup,const UnitRecord& unit) noexcept;
+[[nodiscard]] bool pickup_overlaps(const PickupRecord& pickup,const UnitRecord& unit,
+                                   const AngleTable& angles) noexcept;
+// Kinds whose retail case touches only the unit (everything but 13, 14 and the
+// kinds without a case).
 [[nodiscard]] bool pickup_kind_supported(std::uint8_t kind) noexcept;
 
-// Applies a confirmed kind to a unit. Returns false for kinds not modelled.
+// Unit-only apply_pickup (delegates to apply_pickup_effect_complete with a
+// scratch owner, announce off). Returns false for owner-only or caseless kinds.
 bool apply_pickup_effect(UnitRecord& unit,std::uint8_t kind,const PickupOptions& options) noexcept;
 
-// Collects every overlapping, eligible pickup. Pickups are visited in span
-// order, collectors in span order; each pickup is taken at most once.
+// Collects every overlapping, eligible pickup. Collectors are the outer loop
+// (retail per-unit drive update), pickups in span order; each pickup is taken
+// at most once. powerup::collect_with_effects is the owner-aware variant.
 PickupCollectResult collect_pickups(std::span<PickupRecord> pickups,
                                     std::span<PickupCollector> collectors,
                                     std::int32_t tick,const PickupOptions& options,
-                                    GameplayEventQueue& events,SoundEventQueue& sounds,
-                                    const PickupApply& apply={});
+                                    GameplayEventQueue& events,SoundEventQueue& sounds);
 
 // func_800913AC for every pickup. Weights may be null; the kind is then kept.
+// A zero or wrapped weight total keeps the kind (powerup::roll_weighted_kind).
 void update_pickups(std::span<PickupRecord> pickups,std::int32_t tick,
                     const PickupOptions& options,RetailRandom& rng,
                     const PickupWeights* weights);

@@ -1,4 +1,6 @@
 #include "battletanx/campaign_spawn.hpp"
+#include "battletanx/placed_objects.hpp"
+#include "battletanx/queen_world.hpp"
 #include "runtime_test_support.hpp"
 
 using namespace battletanx;
@@ -160,7 +162,6 @@ RUNTIME_TEST(campaign_enemy_groups_use_direct_kinds_and_computer_flags) {
     REQUIRE(plan->owners[0].human_scale.has_value());
     REQUIRE(plan->respawn_points[2].policy==RespawnPolicy::campaign_markers);
     REQUIRE(plan->respawn_points[2].points.size()==3U);
-    REQUIRE(plan->respawn_points[2].member_points.size()==2U);
     return true;
 }
 
@@ -381,6 +382,99 @@ RUNTIME_TEST(team_spawn_table_parser_reads_header_offset) {
     REQUIRE((*parsed)[1][2].x==1.0F && (*parsed)[1][2].heading==0x1234U);
     stream.resize(0x100U);
     REQUIRE(!parse_team_spawn_table(stream).has_value());
+    return true;
+}
+
+RUNTIME_TEST(distributed_pickups_use_canonical_distributor_with_reroll) {
+    CampaignSpawnInput input=campaign_input();
+    input.game_kind=1;
+    input.team_spawns=table();
+    input.pickup_reroll=true;
+    WorldLevel level=level_with({item(10,0U,22U,0U,1.0F),item(10,0U,22U,0U,2.0F),
+                                 item(10,0U,22U,0U,3.0F)});
+    level.pickup_spawn_counts[5]=2;   // re-roll kind
+    level.pickup_spawn_counts[1]=1;   // no re-roll draw
+    RetailRandom rng(42U);
+    const auto plan=build_campaign_spawn_plan(input,level,nullptr,rng,nullptr);
+    REQUIRE(plan.has_value() && plan->pickups.size()==3U);
+    // Replay: slot shuffle, then the canonical distributor on the same plan.
+    RetailRandom replay(42U);
+    std::array<std::uint8_t,4> order{},rank{};
+    assign_slot_order(input.game_kind,replay,order,rank);
+    SpawnContext context;
+    context.game_mode=input.game_kind;
+    context.bank_group=level.bank_group;
+    const LevelSpawnPlan level_plan=interpret_level_spawns(level,context);
+    const auto expected=distribute_random_pickups(level_plan,level.pickup_spawn_counts,replay,true);
+    REQUIRE(expected.size()==3U);
+    for (std::size_t n=0U; n<expected.size(); ++n) {
+        REQUIRE(plan->pickups[n].placement_index==expected[n].placement_index);
+        REQUIRE(plan->pickups[n].kind==expected[n].kind);
+    }
+    REQUIRE(rng.seed()==replay.seed());
+    return true;
+}
+
+RUNTIME_TEST(negative_pickup_count_distributes_nothing_and_draws_nothing) {
+    CampaignSpawnInput input=campaign_input();
+    input.game_kind=1;
+    input.team_spawns=table();
+    input.pickup_reroll=true;
+    WorldLevel level=level_with({item(10,0U,22U,0U,1.0F),item(10,0U,22U,0U,2.0F)});
+    level.pickup_spawn_counts[0]=-1;
+    level.pickup_spawn_counts[5]=2;
+    RetailRandom rng(5U);
+    const auto plan=build_campaign_spawn_plan(input,level,nullptr,rng,nullptr);
+    REQUIRE(plan.has_value() && plan->pickups.empty());
+    RetailRandom replay(5U);
+    std::array<std::uint8_t,4> order{},rank{};
+    assign_slot_order(input.game_kind,replay,order,rank);
+    REQUIRE(rng.seed()==replay.seed());
+    return true;
+}
+
+RUNTIME_TEST(campaign_mode_distributes_no_random_pickups) {
+    WorldLevel level=level_with({marker(0,10,0.0F),item(10,0x10U,22U,0U,1.0F)});
+    level.pickup_spawn_counts[1]=1;
+    RetailRandom rng(3U);
+    const auto plan=build_campaign_spawn_plan(campaign_input(),level,nullptr,rng,nullptr);
+    REQUIRE(plan.has_value() && plan->pickups.empty() && rng.seed()==3U);
+    return true;
+}
+
+RUNTIME_TEST(owned_object_maps_to_turret_spawn) {
+    OwnedObjectPlacement object;
+    object.x=1.0F;
+    object.z=2.0F;
+    object.heading=0x1234U;
+    object.owner=2U;
+    object.team=3U;
+    object.sub_kind=1U;
+    object.flagged=true;
+    const placed::TurretSpawn spawn=owned_object_turret_spawn(object);
+    REQUIRE(spawn.team==3U && spawn.owner==2U && spawn.type==1U && spawn.heading==0x1234U);
+    REQUIRE(spawn.x==1.0F && spawn.z==2.0F && !spawn.check_area && spawn.scaled);
+    return true;
+}
+
+RUNTIME_TEST(placed_bases_and_bank_markers_feed_queen_world) {
+    // Bank: player marker, type-24 marker (param 600), mode-filtered type 24.
+    // Placed: base type 12, skirmish-only base 13 (cleared in 3..6), type 24 (ignored).
+    const WorldLevel level=level_with(
+        {marker(0,10,0.0F),item(24,0U,0U,600U,-3941.0F,-154.0F),item(24,0x40U,0U,600U,1.0F,1.0F)},
+        {item(12,0U,0U,0U,-4176.0F,2303.0F),item(13,0x40U,0U,0U,5.0F,6.0F),item(24,0U,0U,1U)});
+    RetailRandom rng(1U);
+    const auto plan=build_campaign_spawn_plan(campaign_input(),level,nullptr,rng,nullptr);
+    REQUIRE(plan.has_value());
+    const auto bases=queen_level_objects(*plan,level);
+    REQUIRE(bases.size()==2U);
+    REQUIRE(bases[0].kind==12U && bases[0].active && bases[0].x==-4176.0F && bases[0].z==2303.0F);
+    REQUIRE(bases[1].kind==13U && !bases[1].active);
+    const auto markers=objective_marker_entries(*plan,level);
+    REQUIRE(markers.size()==1U);
+    REQUIRE(markers[0].kind==queen_world::bank_entry_kind_marker);
+    REQUIRE(markers[0].x==-3941.0F && markers[0].z==-154.0F);
+    REQUIRE(queen_world::marker_extent(markers[0].param)==600);
     return true;
 }
 

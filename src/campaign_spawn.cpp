@@ -1,6 +1,8 @@
 #include "battletanx/campaign_spawn.hpp"
 
 #include "battletanx/big_endian.hpp"
+#include "battletanx/placed_objects.hpp"
+#include "battletanx/queen_world.hpp"
 #include "battletanx/unit_runtime.hpp"
 
 #include <algorithm>
@@ -150,29 +152,10 @@ std::optional<std::uint16_t> open_triangle_at(const NavigationLevel& navigation,
     return std::nullopt;
 }
 
-// Tail of func_80088670 with pick_effect_kind applied after each spot draw.
-std::vector<PickupPlacement> distribute_with_reroll(const LevelSpawnPlan& level_plan,
-                                                    const WorldLevel& level,RetailRandom& rng) {
-    std::vector<PickupPlacement> placed;
-    if (!level_plan.random_distribution_allowed) return placed;
-    std::int64_t total=0;
-    for (const std::int32_t count : level.pickup_spawn_counts) total+=count;
-    const auto spot_count=static_cast<std::uint32_t>(level_plan.random_spots.size());
-    if (static_cast<std::int64_t>(spot_count)<total || spot_count==0U) return placed;
-    std::vector<bool> used(spot_count,false);
-    for (std::size_t kind=0U; kind<level.pickup_spawn_counts.size(); ++kind) {
-        for (std::int32_t j=0; j<level.pickup_spawn_counts[kind]; ++j) {
-            std::uint32_t spot=0U;
-            do {
-                spot=rng.next_u32()%spot_count;
-            } while (used[spot]);
-            used[spot]=true;
-            PickupPlacement pickup=level_plan.random_spots[spot];
-            pickup.kind=pick_effect_kind(static_cast<std::uint8_t>(kind),true,rng);
-            placed.push_back(pickup);
-        }
-    }
-    return placed;
+bool in_bank_group(const WorldLevel& level,std::uint32_t index) noexcept {
+    if (!level.bank_group || *level.bank_group>=level.groups.size()) return false;
+    const WorldGroup& group=level.groups[*level.bank_group];
+    return index>=group.first_item && index<static_cast<std::uint32_t>(group.first_item)+group.item_count;
 }
 
 void write_point(StateWriter& writer,float x,float z,std::uint16_t heading) {
@@ -303,9 +286,8 @@ std::optional<CampaignSpawnPlan> build_campaign_spawn_plan(
         pickup.kind=pick_effect_kind(pickup.kind,input.pickup_reroll,rng);
         plan.pickups.push_back(pickup);
     }
-    const std::vector<PickupPlacement> distributed=input.pickup_reroll
-        ? distribute_with_reroll(level_plan,level,rng)
-        : distribute_random_pickups(level_plan,level.pickup_spawn_counts,rng);
+    const std::vector<PickupPlacement> distributed=
+        distribute_random_pickups(level_plan,level.pickup_spawn_counts,rng,input.pickup_reroll);
     plan.pickups.insert(plan.pickups.end(),distributed.begin(),distributed.end());
 
     for (const UnitSpawnDefinition& placed : level_plan.units) {
@@ -333,10 +315,6 @@ std::optional<CampaignSpawnPlan> build_campaign_spawn_plan(
         const SpawnOwnerSetup& setup=input.owners[owner];
         const std::vector<SpawnMarker>& markers=level_plan.markers[owner];
         OwnerRespawnPoints& respawn=plan.respawn_points[owner];
-        for (std::size_t i=1U; i<markers.size(); ++i) {
-            respawn.member_points.push_back(SpawnRespawnPoint{markers[i].x,markers[i].z,
-                markers[i].heading,markers[i].param,markers[i].placement_index});
-        }
         if (!setup.present) {
             if (!markers.empty()) {
                 audit(plan,owner,0U,markers.front().placement_index,
@@ -446,7 +424,13 @@ void CampaignSpawnPlan::serialize(StateWriter& writer) const {
         writer.u32(d.placement_index);
         write_point(writer,d.x,d.z,d.heading);
         writer.u16(d.id);
+        writer.u8(d.owner);
+        writer.u8(d.mode);
+        writer.u8(d.shape);
+        writer.u8(d.count_field);
         writer.u8(d.parameter);
+        writer.u8(d.gate_bits);
+        writer.u8(static_cast<std::uint8_t>(d.source));
         writer.s16(d.interval_ticks);
         writer.u8(static_cast<std::uint8_t>(spawner.unit_kind));
         writer.boolean(spawner.random_shape);
@@ -458,11 +442,7 @@ void CampaignSpawnPlan::serialize(StateWriter& writer) const {
         for (const SpawnRespawnPoint& point : respawn.points) {
             write_point(writer,point.x,point.z,point.heading);
             writer.u8(point.parameter);
-        }
-        writer.u32(static_cast<std::uint32_t>(respawn.member_points.size()));
-        for (const SpawnRespawnPoint& point : respawn.member_points) {
-            write_point(writer,point.x,point.z,point.heading);
-            writer.u8(point.parameter);
+            writer.u32(point.placement_index);
         }
     }
     writer.u32(static_cast<std::uint32_t>(pickups.size()));
@@ -485,6 +465,42 @@ void CampaignSpawnPlan::serialize(StateWriter& writer) const {
         writer.u32(entry.placement_index);
         writer.u8(static_cast<std::uint8_t>(entry.reason));
     }
+}
+
+placed::TurretSpawn owned_object_turret_spawn(const OwnedObjectPlacement& object) noexcept {
+    return placed::TurretSpawn{.team=object.team,.owner=object.owner,.type=object.sub_kind,
+                               .heading=object.heading,.x=object.x,.z=object.z,
+                               .check_area=false,.scaled=object.flagged};
+}
+
+std::vector<queen_world::LevelObject> queen_level_objects(const CampaignSpawnPlan& plan,
+                                                          const WorldLevel& level) {
+    std::vector<queen_world::LevelObject> objects;
+    for (const SkippedItem& item : plan.skipped) {
+        if (item.type<11 || item.type>14 || item.placement_index>=level.items.size() ||
+            in_bank_group(level,item.placement_index)) continue;
+        const bool cleared=item.reason==SkipReason::mode_flag_filtered ||
+                           item.reason==SkipReason::capacity_gated;
+        if (!cleared && item.reason!=SkipReason::placed_object_other) continue;
+        const WorldItem& source=level.items[item.placement_index];
+        objects.push_back(queen_world::LevelObject{.kind=static_cast<std::uint8_t>(item.type),
+            .active=!cleared,.x=source.x,.z=source.z});
+    }
+    return objects;
+}
+
+std::vector<queen_world::MarkerBankEntry> objective_marker_entries(const CampaignSpawnPlan& plan,
+                                                                   const WorldLevel& level) {
+    std::vector<queen_world::MarkerBankEntry> entries;
+    for (const SkippedItem& item : plan.skipped) {
+        if (item.type!=24 || item.placement_index>=level.items.size() ||
+            !in_bank_group(level,item.placement_index)) continue;
+        if (item.reason!=SkipReason::untraced_type && item.reason!=SkipReason::view_count_gated) continue;
+        const WorldItem& source=level.items[item.placement_index];
+        entries.push_back(queen_world::MarkerBankEntry{.kind=queen_world::bank_entry_kind_marker,
+            .x=source.x,.z=source.z,.param=source.id});
+    }
+    return entries;
 }
 
 } // namespace battletanx

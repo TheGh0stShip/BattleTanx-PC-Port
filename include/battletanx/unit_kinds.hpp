@@ -254,6 +254,12 @@ struct PlacedObjectEvent {
 inline constexpr std::array<std::uint8_t,4> slot_rank{0U,1U,2U,3U};   // D_801260A4
 inline constexpr std::int32_t placed_base_score=1000;
 inline constexpr std::int32_t placed_collapse_ticks=60;              // update_effect_kind_5 (0x3C)
+// update_effect_kind_5 (func_80092734): flag 1 selects the timed collapse
+// (asm 0x80092778 andi 0x1); a finished collapse step clears 0x80 and 0x10
+// with andi 0x6F (asm 0x80092FA4) while health (+0x12) is positive.
+inline constexpr std::uint8_t placed_flag_animated=0x01U;
+inline constexpr std::uint8_t placed_flag_collapsing=0x80U;           // zone_effect_handle_message
+inline constexpr std::uint8_t placed_collapse_clear_mask=0x6FU;
 inline constexpr float placed_splash_radius=108.0F;                  // destroy_placed_object
 inline constexpr float placed_splash_value=20.0F;
 
@@ -267,6 +273,10 @@ struct PlacedObjectRecord {
     std::int32_t collapse_ticks{};  // update_effect_kind_5 frame
     bool knocked{};                 // kind 6 released
     float x{}, z{};
+    // Staged objects: on the active effect list, so update_effect_kind_5 runs
+    // (release_effect, func_8008B89C). Cleared when the update reports
+    // result 1 (idle list) or 2 (removed).
+    bool updating{};
 
     void serialize(StateWriter& writer) const;
 };
@@ -281,7 +291,14 @@ struct PlacedObjectRecord {
 std::vector<PlacedObjectEvent> damage_placed_object(PlacedObjectRecord& object,std::uint32_t message,
         std::int32_t damage,std::uint8_t source_owner,bool shielded,std::span<OwnerRecord> owners,
         std::int32_t game_mode);
-// Collapse animation; advances the stage when it finishes.
+// release_effect (func_8008B89C) for a staged object: schedules
+// update_effect_kind_5. Does not restart an update already running
+// (release_effect only moves effects from the idle/pending lists).
+// Message 3/7 callers (func_8009345C) use this instead of setting 0x80.
+void schedule_placed_update(PlacedObjectRecord& object) noexcept;
+// update_effect_kind_5 (func_80092734), one tick. Flag 1: 60-tick collapse,
+// then one stage; flags &= 0x6F when health > 0, otherwise the collapse
+// repeats. Flag 1 clear: one stage per scheduled update, flags unchanged.
 std::vector<PlacedObjectEvent> update_placed_object(PlacedObjectRecord& object);
 
 // destroy_placed_object (func_8008FD6C), effect kind 18.

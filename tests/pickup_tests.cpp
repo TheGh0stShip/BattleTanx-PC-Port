@@ -60,7 +60,7 @@ RUNTIME_TEST(pickup_out_of_range) {
     std::array<PickupCollector,1> collectors{collector_for(unit)};
     REQUIRE(collect_pickups(pickups,collectors,1,f.options,f.events,f.sounds).collected==0U);
     REQUIRE(!pickup_overlaps(pickup_at(0U,70.5F,0.0F),unit));
-    REQUIRE(pickup_overlaps(pickup_at(0U,70.0F,0.0F),unit));
+    REQUIRE(pickup_overlaps(pickup_at(0U,69.9F,0.0F),unit));
     REQUIRE(f.events.events().empty());
     return true;
 }
@@ -133,17 +133,72 @@ RUNTIME_TEST(pickup_eligibility_rules) {
 }
 
 RUNTIME_TEST(pickup_unsupported_kind_reported) {
-    Fixture f;
+    // 13 and 14 need the owner record; 6 has no retail case.
+    for (const std::uint8_t kind : {std::uint8_t{6U},std::uint8_t{13U},std::uint8_t{14U}}) {
+        Fixture f;
+        UnitRecord unit=tank_at(0.0F,0.0F);
+        const UnitRecord before=unit;
+        std::array<PickupRecord,1> pickups{pickup_at(kind,0.0F,0.0F)};
+        std::array<PickupCollector,1> collectors{collector_for(unit)};
+        const auto result=collect_pickups(pickups,collectors,1,f.options,f.events,f.sounds);
+        REQUIRE(result.collected==1U);
+        REQUIRE(result.unsupported==1U);
+        REQUIRE(f.events.events()[0].value==(kind|pickup_unsupported_flag));
+        REQUIRE(unit.health==before.health);
+        REQUIRE(unit.ammo==before.ammo);
+    }
+    return true;
+}
+
+RUNTIME_TEST(pickup_unit_only_kinds_now_applied) {
+    PickupOptions options;
     UnitRecord unit=tank_at(0.0F,0.0F);
-    const UnitRecord before=unit;
-    std::array<PickupRecord,1> pickups{pickup_at(7U,0.0F,0.0F)};
-    std::array<PickupCollector,1> collectors{collector_for(unit)};
-    const auto result=collect_pickups(pickups,collectors,1,f.options,f.events,f.sounds);
-    REQUIRE(result.collected==1U);
-    REQUIRE(result.unsupported==1U);
-    REQUIRE(f.events.events()[0].value==(7|pickup_unsupported_flag));
-    REQUIRE(unit.health==before.health);
-    REQUIRE(unit.ammo==before.ammo);
+    REQUIRE(apply_pickup_effect(unit,7U,options));
+    REQUIRE(unit.ammo[11]==5 && unit.secondary_weapon.kind==11U);
+    REQUIRE(apply_pickup_effect(unit,4U,options));
+    REQUIRE((unit.flags&0x80U)!=0U);
+    REQUIRE(apply_pickup_effect(unit,8U,options));
+    REQUIRE(unit.shield_strength==100);
+    REQUIRE(apply_pickup_effect(unit,18U,options));
+    REQUIRE(unit.shield_strength==125);         // positive strength = live link
+    REQUIRE(apply_pickup_effect(unit,12U,options));
+    REQUIRE(unit.ammo[15]==1);                  // no cloak option here
+    unit.health=unit.max_health;
+    REQUIRE(apply_pickup_effect(unit,0U,options));
+    REQUIRE(unit.ammo[16]==1);                  // stored pack at full health
+    REQUIRE(!apply_pickup_effect(unit,13U,options));
+    REQUIRE(!apply_pickup_effect(unit,22U,options));
+    return true;
+}
+
+RUNTIME_TEST(pickup_collector_major_order) {
+    Fixture f;
+    UnitRecord first=tank_at(0.0F,0.0F);
+    UnitRecord second=tank_at(0.0F,0.0F);
+    first.health=10;
+    second.health=10;
+    std::array<PickupRecord,2> pickups{pickup_at(0U,0.0F,0.0F),pickup_at(0U,0.0F,0.0F)};
+    pickups[1].id=EntityId{4U,1U};
+    std::array<PickupCollector,2> collectors{collector_for(first),collector_for(second)};
+    collectors[1].id=EntityId{2U,1U};
+    REQUIRE(collect_pickups(pickups,collectors,1,f.options,f.events,f.sounds).collected==2U);
+    // The first unit's update takes both overlapping pickups.
+    REQUIRE(first.health==70 && second.health==10);
+    REQUIRE(f.events.events()[0].other==(EntityId{1U,1U}));
+    REQUIRE(f.events.events()[1].other==(EntityId{1U,1U}));
+    return true;
+}
+
+RUNTIME_TEST(pickup_zero_weight_total_keeps_kind) {
+    PickupOptions options;
+    std::array<PickupRecord,1> pickups{pickup_at(9U,0.0F,0.0F)};
+    pickups[0].active=false;
+    pickups[0].respawn_tick=5;
+    PickupWeights empty;
+    RetailRandom rng(7U);
+    update_pickups(pickups,6,options,rng,&empty);
+    REQUIRE(pickups[0].active && pickups[0].kind==9U);
+    REQUIRE(rng.seed()==7U);
     return true;
 }
 

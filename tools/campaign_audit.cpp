@@ -52,6 +52,13 @@ std::map<std::uint32_t,std::uint32_t> decode_level_range_init(const BigEndianVie
 
 std::string hash_of(std::span<const std::uint8_t> bytes) { return hex_digest(sha256(bytes)); }
 
+std::span<const std::uint8_t> rom_range(std::span<const std::uint8_t> bytes,
+                                        std::size_t offset,std::size_t size) {
+    if (offset>bytes.size() || size>bytes.size()-offset)
+        throw std::runtime_error("ROM range out of bounds");
+    return bytes.subspan(offset,size);
+}
+
 } // namespace
 
 int main(int argc,char** argv) {
@@ -95,8 +102,8 @@ int main(int argc,char** argv) {
 
         const auto stores=decode_level_range_init(view);
         std::size_t stream_ok=0U, nav_ok=0U, range_ok=0U, spawn_ok=0U, model_ok=0U;
-        const auto roster_bytes=rom.bytes().subspan(
-            controller_roster_rom_offset,controller_roster_count*controller_roster_size);
+        const auto roster_bytes=rom_range(
+            rom.bytes(),controller_roster_rom_offset,controller_roster_count*controller_roster_size);
         for (const CampaignWaveDefinition& wave : campaign_wave_definitions()) {
             const LevelStreamDescriptor* stream=nullptr;
             for (const LevelStreamDescriptor& d : level_stream_descriptors()) if (d.index==wave.world_stream) stream=&d;
@@ -183,9 +190,11 @@ int main(int argc,char** argv) {
                       << " pickups " << (spawn ? spawn->pickups.size() : 0U)
                       << " spawn_error " << (spawn ? -1 : static_cast<int>(spawn_error)) << '\n';
         }
-        const auto table=rom.bytes().subspan(campaign_wave_table_rom,campaign_wave_count*campaign_wave_record_size);
+        const auto table=rom_range(
+            rom.bytes(),campaign_wave_table_rom,campaign_wave_count*campaign_wave_record_size);
         std::cout << "wave_table_sha256 " << hash_of(table) << '\n'
-                  << "gun_table_sha256 " << hash_of(rom.bytes().subspan(campaign_gun_table_rom,campaign_gun_table_count*8U)) << '\n'
+                  << "gun_table_sha256 " << hash_of(rom_range(
+                         rom.bytes(),campaign_gun_table_rom,campaign_gun_table_count*8U)) << '\n'
                   << "word_mismatches " << word_mismatch << '\n'
                   << "gun_mismatches " << gun_mismatch << '\n'
                   << "briefing_mismatches " << briefing_mismatch << '\n'

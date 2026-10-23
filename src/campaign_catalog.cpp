@@ -393,7 +393,7 @@ constexpr std::uint16_t half(const CampaignRawWave& raw,std::size_t offset) noex
 // select_screen_transition (func_8007D2A0) switch on the level id.
 constexpr std::int8_t music_transition_for(std::int32_t level) noexcept {
     switch (level) {
-    case 0: return -1;
+    case 0: return -1;  // stop
     case 1: return 7;
     case 2: return 2;
     case 4: return 0x11;
@@ -406,7 +406,7 @@ constexpr std::int8_t music_transition_for(std::int32_t level) noexcept {
     case 14: return 8;
     case 16: return 0xA;
     case 5: case 9: case 13: case 15: case 17: return 6;
-    case 18: case 19: return -1; // no change: keeps the previous transition
+    case 18: case 19: return -1; // stop: func_80079BD4 via func_8007D2A0 (music_selection.hpp)
     default: return 0;
     }
 }
@@ -539,6 +539,15 @@ const CampaignWaveDefinition* next_campaign_wave(const CampaignWaveDefinition& w
 
 const CampaignWaveDefinition* campaign_wave_for_record(const CampaignRecord& record) noexcept {
     return find_campaign_wave(static_cast<std::int32_t>(record.mission_id));
+}
+
+CampaignResume campaign_resume_for_record(const CampaignRecord& record) noexcept {
+    // TEMPORARY POLICY: retail never writes id 0; treated as completed for robustness.
+    if (record.mission_id==static_cast<std::uint8_t>(kPostTableIdWord))
+        return CampaignResume{.status=CampaignResumeStatus::campaign_complete,.wave=nullptr};
+    const CampaignWaveDefinition* wave=campaign_wave_for_record(record);
+    if (wave==nullptr) return CampaignResume{.status=CampaignResumeStatus::unknown_mission,.wave=nullptr};
+    return CampaignResume{.status=CampaignResumeStatus::resume_wave,.wave=wave};
 }
 
 std::optional<std::array<std::int16_t,4>> campaign_gun_table(std::uint32_t vram) noexcept {

@@ -116,6 +116,29 @@ target_sources(battletanx_core PRIVATE
     src/state_hash.cpp
     src/unit_runtime.cpp
 )
+# Campaign runtime v3 modules (placed before the native-source check below).
+target_sources(battletanx_core PRIVATE
+    src/campaign_ai_parameters.cpp
+    src/campaign_battle_bridge.cpp
+    src/campaign_flow.cpp
+    src/campaign_harness.cpp
+    src/campaign_harness_bindings.cpp
+    src/campaign_owner_plays.cpp
+    src/campaign_save_transaction.cpp
+    src/deployables_runtime.cpp
+    src/effect_runtime.cpp
+    src/frontend_model.cpp
+    src/frontend_setup_menus.cpp
+    src/music_selection.cpp
+    src/owner_links.cpp
+    src/owner_profiles.cpp
+    src/placed_objects.cpp
+    src/powerup_state.cpp
+    src/queen_world.cpp
+    src/route_service.cpp
+    src/spawner_runtime.cpp
+    src/squad_units.cpp
+)
 require_native_source_target(battletanx_core)
 function(add_runtime_test name)
     add_executable(${name} tests/${name}.cpp)
@@ -159,6 +182,71 @@ add_runtime_test(unit_kinds_tests)
 add_executable(battletanx_campaign_audit tools/campaign_audit.cpp)
 target_link_libraries(battletanx_campaign_audit PRIVATE battletanx_core)
 target_compile_options(battletanx_campaign_audit PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive->
+)
+
+# Campaign runtime v3 tests.
+add_runtime_test(campaign_ai_parameters_tests)
+add_runtime_test(campaign_ai_scenario_tests)
+add_runtime_test(campaign_battle_bridge_tests)
+add_runtime_test(campaign_flow_tests)
+add_runtime_test(campaign_harness_bindings_tests)
+add_runtime_test(campaign_harness_tests)
+add_runtime_test(campaign_owner_plays_tests)
+add_runtime_test(campaign_save_transaction_tests)
+add_runtime_test(campaign_scenario_tests)
+add_runtime_test(campaign_wave_fixtures_tests)
+add_runtime_test(deployables_tests)
+add_runtime_test(effect_runtime_tests)
+add_runtime_test(frontend_model_tests)
+add_runtime_test(frontend_setup_menus_tests)
+add_runtime_test(music_selection_tests)
+add_runtime_test(objective_world_scenario_tests)
+add_runtime_test(owner_links_tests)
+add_runtime_test(owner_profiles_tests)
+add_runtime_test(placed_objects_tests)
+add_runtime_test(powerup_state_tests)
+add_runtime_test(queen_world_tests)
+add_runtime_test(route_service_tests)
+add_runtime_test(spawner_runtime_tests)
+add_runtime_test(squad_units_tests)
+add_runtime_test(world_runtime_scenario_tests)
+
+# Campaign runtime v3 audit tools (same flags and link as campaign_audit).
+add_executable(battletanx_campaign_play_audit tools/campaign_play_audit.cpp)
+target_link_libraries(battletanx_campaign_play_audit PRIVATE battletanx_core)
+target_compile_options(battletanx_campaign_play_audit PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive->
+)
+add_executable(battletanx_model_effect_slot_audit tools/model_effect_slot_audit.cpp)
+target_link_libraries(battletanx_model_effect_slot_audit PRIVATE battletanx_core)
+target_compile_options(battletanx_model_effect_slot_audit PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive->
+)
+add_executable(battletanx_music_mapping_audit tools/music_mapping_audit.cpp)
+target_link_libraries(battletanx_music_mapping_audit PRIVATE battletanx_core)
+target_compile_options(battletanx_music_mapping_audit PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive->
+)
+add_executable(battletanx_spawner_audit tools/spawner_audit.cpp)
+target_link_libraries(battletanx_spawner_audit PRIVATE battletanx_core)
+target_compile_options(battletanx_spawner_audit PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive->
+)
+add_executable(battletanx_weapon_pickup_audit tools/weapon_pickup_audit.cpp)
+target_link_libraries(battletanx_weapon_pickup_audit PRIVATE battletanx_core)
+target_compile_options(battletanx_weapon_pickup_audit PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive->
+)
+add_executable(battletanx_world_objective_audit tools/world_objective_audit.cpp)
+target_link_libraries(battletanx_world_objective_audit PRIVATE battletanx_core)
+target_compile_options(battletanx_world_objective_audit PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>
     $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive->
 )

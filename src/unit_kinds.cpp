@@ -427,7 +427,7 @@ TurretDamageResult damage_turret(TurretRecord& turret,std::uint32_t message,std:
 void PlacedObjectRecord::serialize(StateWriter& writer) const {
     writer.u8(static_cast<std::uint8_t>(object_class)); writer.u32(slot_mode); writer.u8(flags);
     writer.u8(stage_count); writer.u8(stage); writer.s16(health); writer.s32(collapse_ticks);
-    writer.boolean(knocked); writer.f32(x); writer.f32(z);
+    writer.boolean(knocked); writer.f32(x); writer.f32(z); writer.boolean(updating);
 }
 
 PlacedObjectRecord make_placed_object(PlacedObjectClass object_class,std::uint32_t slot_mode,
@@ -485,13 +485,13 @@ std::vector<PlacedObjectEvent> damage_placed_object(PlacedObjectRecord& object,s
     if (object.slot_mode==0x14U && !shielded) damage=0;
     object.health=static_cast<std::int16_t>(object.health-damage);
     if (object.health<0) object.health=0;
-    if ((object.flags&0x80U)!=0U) return events;
+    if ((object.flags&placed_flag_collapsing)!=0U) return events;
     const bool base=object.slot_mode>=11U && object.slot_mode<=14U;
     const std::uint8_t rank=base ? slot_rank[object.slot_mode-11U] : std::uint8_t{0xFFU};
     if (base) events.push_back({PlacedObjectEventKind::base_alert,rank,1});
     if (object.health!=0) return events;
-    object.flags|=0x80U;
-    object.collapse_ticks=0;
+    schedule_placed_update(object);
+    object.flags|=placed_flag_collapsing;
     object.health=(object.flags&0x20U)!=0U ? std::int16_t{1} : std::int16_t{0x11};
     events.push_back({PlacedObjectEventKind::stage_lost,0xFFU,object.stage});
     if (base && static_cast<std::int32_t>(object.stage)==object.stage_count-2) {
@@ -505,14 +505,48 @@ std::vector<PlacedObjectEvent> damage_placed_object(PlacedObjectRecord& object,s
     return events;
 }
 
+void schedule_placed_update(PlacedObjectRecord& object) noexcept {
+    if (object.object_class!=PlacedObjectClass::staged || object.updating) return;
+    object.updating=true;
+    // release_effect does not reset effect +0x10; it is already 0 after any
+    // completed collapse and a fresh effect starts at 0, so this is equivalent.
+    object.collapse_ticks=0;
+}
+
 std::vector<PlacedObjectEvent> update_placed_object(PlacedObjectRecord& object) {
     std::vector<PlacedObjectEvent> events;
-    if (object.object_class!=PlacedObjectClass::staged || (object.flags&0x80U)==0U) return events;
+    if (object.object_class!=PlacedObjectClass::staged || !object.updating) return events;
+    const std::int32_t last=static_cast<std::int32_t>(object.stage_count)-1;
+    if ((object.flags&placed_flag_animated)==0U) {
+        // asm 0x80092FB0: stage < stages-1 -> stage++; result 1. 0x80 is not cleared.
+        if (static_cast<std::int32_t>(object.stage)<last) {
+            ++object.stage;
+            if (static_cast<std::int32_t>(object.stage)==last) {
+                // TEMPORARY POLICY: retail emits no func_800E19B8 here.
+                events.push_back({PlacedObjectEventKind::destroyed,0xFFU,object.stage});
+            }
+        }
+        object.updating=false;
+        return events;
+    }
     if (++object.collapse_ticks<placed_collapse_ticks) return events;
     object.collapse_ticks=0;
-    object.flags&=0x7FU;
     ++object.stage;
-    if (placed_object_destroyed(object)) events.push_back({PlacedObjectEventKind::destroyed,0xFFU,object.stage});
+    const bool destroyed=static_cast<std::int32_t>(object.stage)==last;
+    if (destroyed) {
+        events.push_back({PlacedObjectEventKind::destroyed,0xFFU,object.stage});
+        if ((object.flags&8U)!=0U) {   // flatten swap: result 2 without the flag clear
+            object.updating=false;
+            return events;
+        }
+    }
+    if (object.health>0) {
+        object.flags&=placed_collapse_clear_mask;
+        object.updating=false;
+    } else if (destroyed) {
+        object.updating=false;         // result 2
+    }
+    // health <= 0 before the last stage: result 0, the collapse repeats.
     return events;
 }
 

@@ -1,5 +1,8 @@
 #include "battletanx/level_spawns.hpp"
+#include "battletanx/spawner_runtime.hpp"
 #include "runtime_test_support.hpp"
+
+#include <limits>
 
 using namespace battletanx;
 
@@ -285,6 +288,27 @@ RUNTIME_TEST(player_placement_selection) {
     return true;
 }
 
+RUNTIME_TEST(random_pickup_distribution_rejects_bad_counts) {
+    std::vector<WorldItem> bank;
+    for (int i=0; i<4; ++i) bank.push_back(item(10,0U,22U,0U,static_cast<float>(i)));
+    const LevelSpawnPlan plan=interpret_level_spawns(level_with(bank),context(0));
+    std::array<std::int32_t,pickup_spawn_count_kinds> counts{};
+    // Overflowing sum: must be rejected, not wrap.
+    counts[0]=std::numeric_limits<std::int32_t>::max();
+    counts[1]=std::numeric_limits<std::int32_t>::max();
+    RetailRandom rng(7U);
+    REQUIRE(distribute_random_pickups(plan,counts,rng).empty());
+    REQUIRE(rng.seed()==7U);
+    // A negative count must not hide a later count larger than the free spots.
+    counts={};
+    counts[0]=-3;
+    counts[1]=6;
+    RetailRandom rng2(7U);
+    REQUIRE(distribute_random_pickups(plan,counts,rng2).empty());
+    REQUIRE(rng2.seed()==7U);
+    return true;
+}
+
 RUNTIME_TEST(random_pickup_distribution) {
     std::vector<WorldItem> bank;
     for (int i=0; i<4; ++i) bank.push_back(item(10,0U,22U,0U,static_cast<float>(i)));
@@ -305,6 +329,72 @@ RUNTIME_TEST(random_pickup_distribution) {
     RetailRandom rng3(3U);
     REQUIRE(pick_effect_kind(0U,true,rng3)==0U);
     REQUIRE(rng3.seed()==3U);
+    return true;
+}
+
+// Hand-computed from seed 0 (seed=seed*0x10DCD+1, result = halves swapped):
+//   draw1 seed 0x00000001 -> 0x00010000 (%4=0)
+//   draw2 seed 0x00010DCE -> 0x0DCE0001 (%4=1)
+//   draw3 seed 0x1C5983F7 -> 0x83F71C59 (%4=1, %11=4)
+//   draw4 seed 0xC35937CC -> 0x37CCC359 (%4=1)
+//   draw5 seed 0x2E130A5D -> 0x0A5D2E13 (%4=3)
+RUNTIME_TEST(random_pickup_distribution_retail_draw_order) {
+    std::vector<WorldItem> bank;
+    for (int i=0; i<4; ++i) bank.push_back(item(10,0U,22U,0U,static_cast<float>(i)));
+    const LevelSpawnPlan plan=interpret_level_spawns(level_with(bank),context(0));
+    REQUIRE(plan.random_spots.size()==4U);
+    std::array<std::int32_t,pickup_spawn_count_kinds> counts{};
+    counts[0]=1;
+    counts[5]=1;
+    // Re-roll on: kind 0 spot (draw1), kind 5 spot (draw2), kind 5 re-roll (draw3: 4 -> 3).
+    RetailRandom on(0U);
+    const auto a=distribute_random_pickups(plan,counts,on,true);
+    REQUIRE(a.size()==2U);
+    REQUIRE(a[0].placement_index==plan.random_spots[0].placement_index && a[0].kind==0U);
+    REQUIRE(a[1].placement_index==plan.random_spots[1].placement_index && a[1].kind==3U);
+    REQUIRE(on.seed()==0x1C5983F7U);
+    // Re-roll off: no third draw, kind stays 5.
+    RetailRandom off(0U);
+    const auto b=distribute_random_pickups(plan,counts,off,false);
+    REQUIRE(b.size()==2U);
+    REQUIRE(b[1].placement_index==plan.random_spots[1].placement_index && b[1].kind==5U);
+    REQUIRE(off.seed()==0x00010DCEU);
+    // Taken-spot retries: three kind-0 copies draw spots 0,1,1(retry),1(retry),3.
+    counts={};
+    counts[0]=3;
+    RetailRandom retry(0U);
+    const auto c=distribute_random_pickups(plan,counts,retry,true);
+    REQUIRE(c.size()==3U);
+    REQUIRE(c[0].placement_index==plan.random_spots[0].placement_index);
+    REQUIRE(c[1].placement_index==plan.random_spots[1].placement_index);
+    REQUIRE(c[2].placement_index==plan.random_spots[3].placement_index);
+    REQUIRE(retry.seed()==0x2E130A5DU);
+    return true;
+}
+
+// update_spawner mode 3 draws one extra value (spawn_available_owner_unit.c:61)
+// after the passing &0xF roll; both outcomes give shape 2.
+
+// update_spawner is a deprecated adapter over spawner_runtime::tick_spawner:
+// same statuses, same draws, same shape.
+RUNTIME_TEST(update_spawner_delegates_to_tick_spawner) {
+    const std::uint16_t id=static_cast<std::uint16_t>(1U|(3U<<2U));   // owner 1, mode 3
+    SpawnerState legacy=ready_spawner(id);
+    SpawnerState canonical=ready_spawner(id);
+    SpawnerOwnerView owner=owner_with_budget(2);
+    spawner_runtime::OwnerSpawnRecords owners{};
+    owners[1].budget=2;
+    owners[1].gate_open=true;
+    RetailRandom a(0U);
+    RetailRandom b(0U);
+    spawner_runtime::SpawnOrderQueue queue;
+    const auto x=update_spawner(legacy,std::nullopt,owner,500,a,always_clear);
+    const auto y=spawner_runtime::tick_spawner(canonical,std::nullopt,0,500,owners,b,{},queue);
+    REQUIRE(x.status==SpawnerUpdateStatus::spawned && y.status==spawner_runtime::SpawnerTickStatus::spawned);
+    REQUIRE(a.seed()==b.seed() && a.seed()==0x10DCEU);   // roll + mode-3 bit
+    REQUIRE(x.request.has_value() && x.request->shape==2U && x.request->squad_slot==0U);
+    REQUIRE(owner.budget==1 && owners[1].budget==1);
+    REQUIRE(legacy.last_tick==500 && canonical.last_tick==500);
     return true;
 }
 

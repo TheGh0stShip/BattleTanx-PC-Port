@@ -1,5 +1,11 @@
 #include "battletanx/pickup_effects.hpp"
 
+#include "battletanx/level_spawns.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
 namespace battletanx {
 namespace {
 
@@ -34,9 +40,19 @@ void add_stock(UnitRecord& unit,std::uint8_t slot,std::uint16_t amount,
 
 void add_health(UnitRecord& unit,float fraction,PickupEffectResult& result) noexcept {
     const std::int32_t before=unit.health;
-    unit.health+=static_cast<std::int32_t>(static_cast<float>(unit.max_health)*fraction);
-    if (unit.health>unit.max_health) unit.health=unit.max_health;
-    result.health_delta=unit.health-before;
+    // Retail: health += (s32)(max*fraction), clamp to max. Guard the float->int
+    // conversion and the add so out-of-range inputs cannot be UB.
+    const float scaled=static_cast<float>(unit.max_health)*fraction;
+    // Saturate instead of casting an out-of-range float (UB); NaN adds nothing.
+    std::int64_t add=0;
+    if (std::isnan(scaled)) add=0;
+    else if (scaled>=2147483648.0F) add=INT32_MAX;
+    else if (scaled<=-2147483648.0F) add=INT32_MIN;
+    else add=static_cast<std::int64_t>(scaled);
+    const std::int64_t health=std::clamp<std::int64_t>(static_cast<std::int64_t>(unit.health)+add,INT32_MIN,INT32_MAX);
+    unit.health=static_cast<std::int32_t>(std::min<std::int64_t>(health,unit.max_health));
+    result.health_delta=static_cast<std::int32_t>(std::clamp<std::int64_t>(
+        static_cast<std::int64_t>(unit.health)-before,INT32_MIN,INT32_MAX));
 }
 
 void primary_ammo(UnitRecord& unit,std::uint16_t small,std::uint16_t large,
@@ -51,9 +67,13 @@ void shield(UnitRecord& unit,TimedPowerupState& timed,std::int32_t amount,
     // spawn_effect_kind_17 marker (effect 23, value18 = amount) or +amount on the
     // live marker. An effect-pool failure is not modelled.
     result.effect=timed.shield_live ? PickupEffectKind::shield_added : PickupEffectKind::shield_created;
-    if (timed.shield_live) unit.shield_strength+=amount;
+    const std::int32_t before=timed.shield_live ? unit.shield_strength : 0;
+    if (timed.shield_live) unit.shield_strength=static_cast<std::int32_t>(std::min<std::int64_t>(
+        static_cast<std::int64_t>(unit.shield_strength)+amount,INT32_MAX));
     else { unit.shield_strength=amount; timed.shield_live=true; }
-    result.shield_delta=amount;
+    // Report the applied delta (differs from amount only on INT32_MAX saturation).
+    result.shield_delta=static_cast<std::int32_t>(std::clamp<std::int64_t>(
+        static_cast<std::int64_t>(unit.shield_strength)-before,INT32_MIN,INT32_MAX));
     result.status=PickupEffectStatus::applied;
 }
 
@@ -75,7 +95,10 @@ bool award_owner_life(OwnerRecord& owner,std::int32_t game_mode) noexcept {
 }
 
 std::uint8_t add_owner_progress(OwnerRecord& owner,std::int32_t amount,std::int32_t game_mode) noexcept {
-    const std::int32_t progress=owner.score+amount;
+    // TEMPORARY POLICY: retail adds in s32; the native sum is computed in
+    // int64 and wrapped to 32 bits explicitly to avoid signed overflow.
+    const std::int32_t progress=static_cast<std::int32_t>(static_cast<std::uint32_t>(
+        static_cast<std::int64_t>(owner.score)+static_cast<std::int64_t>(amount)));
     const std::int32_t next=progress/progress_threshold;
     const std::int32_t previous=owner.score/progress_threshold;
     std::uint8_t lives=0U;
@@ -235,13 +258,8 @@ bool spawn_grant_applies(std::int32_t game_mode,std::uint16_t owner_index,
 }
 
 std::uint8_t reroll_bank_pickup_kind(std::uint8_t kind,bool enabled,RetailRandom& rng) noexcept {
-    if (!enabled) return kind;
-    switch (kind) {
-    case 5: case 6: case 7: case 9: case 10: case 13: case 14: case 16: break;
-    default: return kind;
-    }
-    static constexpr std::array<std::uint8_t,11> table{0U,0U,0U,3U,3U,2U,2U,4U,8U,12U,15U};
-    return table[rng.next_u32()%11U];
+    // Single implementation of pick_effect_kind lives in level_spawns.
+    return pick_effect_kind(kind,enabled,rng);
 }
 
 } // namespace battletanx

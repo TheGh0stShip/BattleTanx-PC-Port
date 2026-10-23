@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace battletanx::retail {
@@ -26,12 +27,12 @@ inline constexpr std::int16_t tank_primary_ammo=70;
 inline constexpr std::int32_t never_fired_tick=-1000;
 inline constexpr std::size_t ammo_slots=17U;
 
-// D_80125EC0 (ROM 0xB5EC0, u8[16]): weapon cooldown in game ticks.
-inline constexpr std::array<std::uint8_t,16> weapon_cooldown{
-    0U,30U,3U,40U,50U,54U,50U,10U,5U,0U,50U,50U,15U,60U,60U,120U};
-// D_80125ED4 (ROM 0xB5ED4, u8[18]): non-zero = fires while the trigger is held.
-inline constexpr std::array<std::uint8_t,18> weapon_repeats{
-    0U,1U,1U,1U,0U,0U,0U,0U,1U,0U,0U,0U,0U,0U,0U,0U,0U,0U};
+// D_80125EC0 (ROM 0xB5EC0, u8[17]): weapon cooldown in game ticks, ids 0..16.
+inline constexpr std::array<std::uint8_t,17> weapon_cooldown{
+    0U,30U,3U,40U,50U,54U,50U,10U,5U,0U,50U,50U,15U,60U,60U,120U,1U};
+// D_80125ED4 (ROM 0xB5ED4, u8[17]): non-zero = fires while the trigger is held.
+inline constexpr std::array<std::uint8_t,17> weapon_repeats{
+    0U,1U,1U,1U,0U,0U,0U,0U,1U,0U,0U,0U,0U,0U,0U,0U,0U};
 
 // fire_unit_weapon (func_800987D8) case 1/3: muzzle offset in turret space
 // (x, y, z) and shell speed; spawn_effect_kind_22 (func_8008E29C) fields.

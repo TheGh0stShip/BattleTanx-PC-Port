@@ -291,12 +291,69 @@ RUNTIME_TEST(placed_base_stages_and_score) {
     ev=damage_placed_object(base,34U,10,0U,false,owners,5);
     REQUIRE((base.flags&0x80U)!=0U && base.health==17);
     REQUIRE(damage_placed_object(base,2U,10,0U,false,owners,5).empty());
-    for (int i=0; i<placed_collapse_ticks; ++i) ev=update_placed_object(base);
-    REQUIRE(base.stage==1U && (base.flags&0x80U)==0U && ev.empty());
+    // Flag 1 clear: one stage per scheduled update; 0x80 stays set (asm 0x80092FB0).
+    REQUIRE(base.updating);
+    ev=update_placed_object(base);
+    REQUIRE(base.stage==1U && (base.flags&0x80U)!=0U && !base.updating && ev.empty());
+    REQUIRE(update_placed_object(base).empty() && base.stage==1U);
+    REQUIRE(damage_placed_object(base,2U,20,0U,false,owners,5).empty() && base.stage==1U);
+    return true;
+}
+
+RUNTIME_TEST(placed_animated_collapse_clears_with_6f) {
+    std::array<OwnerRecord,4> owners{};
+    owners[0].team=0U;
+    owners[2].team=1U;
+    PlacedObjectRecord base=make_placed_object(PlacedObjectClass::staged,13U,0x01U,3U,0.0F,0.0F);
+    base.flags|=0x10U;   // e.g. set by message 3
+    auto ev=damage_placed_object(base,2U,17,0U,false,owners,5);
+    REQUIRE((base.flags&0x80U)!=0U && base.updating && base.health==17);
+    for (int i=0; i<placed_collapse_ticks-1; ++i) REQUIRE(update_placed_object(base).empty());
+    REQUIRE(base.stage==0U);
+    ev=update_placed_object(base);
+    REQUIRE(ev.empty() && base.stage==1U && base.flags==0x01U && !base.updating);
     ev=damage_placed_object(base,2U,20,0U,false,owners,5);
     REQUIRE(ev.back().kind==PlacedObjectEventKind::score_awarded && owners[0].score==1000);
     for (int i=0; i<placed_collapse_ticks; ++i) ev=update_placed_object(base);
     REQUIRE(placed_object_destroyed(base) && ev.size()==1U && ev[0].kind==PlacedObjectEventKind::destroyed);
+    REQUIRE(base.flags==0x01U && !base.updating);
+    return true;
+}
+
+RUNTIME_TEST(placed_animated_collapse_repeats_at_zero_health) {
+    std::array<OwnerRecord,4> owners{};
+    PlacedObjectRecord wall=make_placed_object(PlacedObjectClass::staged,5U,0x01U,4U,0.0F,0.0F);
+    damage_placed_object(wall,2U,17,0U,false,owners,5);
+    // Damage during the collapse still drains health (0x80 path).
+    REQUIRE(damage_placed_object(wall,2U,50,0U,false,owners,5).empty() && wall.health==0);
+    for (int i=0; i<placed_collapse_ticks; ++i) update_placed_object(wall);
+    REQUIRE(wall.stage==1U && (wall.flags&0x80U)!=0U && wall.updating);
+    for (int i=0; i<placed_collapse_ticks; ++i) update_placed_object(wall);
+    REQUIRE(wall.stage==2U && wall.updating);
+    std::vector<PlacedObjectEvent> ev;
+    for (int i=0; i<placed_collapse_ticks; ++i) ev=update_placed_object(wall);
+    REQUIRE(wall.stage==3U && placed_object_destroyed(wall) && !wall.updating && ev.size()==1U);
+    REQUIRE(update_placed_object(wall).empty() && wall.stage==3U);
+    return true;
+}
+
+RUNTIME_TEST(placed_schedule_does_not_restart_running_update) {
+    PlacedObjectRecord wall=make_placed_object(PlacedObjectClass::staged,5U,0x01U,3U,0.0F,0.0F);
+    REQUIRE(update_placed_object(wall).empty() && wall.collapse_ticks==0);
+    schedule_placed_update(wall);
+    REQUIRE(wall.updating && (wall.flags&0x80U)==0U);
+    for (int i=0; i<10; ++i) update_placed_object(wall);
+    schedule_placed_update(wall);
+    REQUIRE(wall.collapse_ticks==10);
+    PlacedObjectRecord fence=make_placed_object(PlacedObjectClass::knockable,3U,0U,1U,0.0F,0.0F);
+    schedule_placed_update(fence);
+    REQUIRE(!fence.updating);
+    StateWriter a;
+    StateWriter b;
+    wall.serialize(a);
+    wall.updating=false;
+    wall.serialize(b);
+    REQUIRE(a.bytes().size()==b.bytes().size() && a.bytes()!=b.bytes());
     return true;
 }
 
@@ -319,7 +376,7 @@ RUNTIME_TEST(placed_object_classes_and_destroy_effect) {
     REQUIRE(destroy_placed_object(1U).explosion_variant==-1 && !destroy_placed_object(1U).notify_area);
     StateWriter w;
     car.serialize(w);
-    REQUIRE(w.bytes().size()==23U);
+    REQUIRE(w.bytes().size()==24U);
     return true;
 }
 

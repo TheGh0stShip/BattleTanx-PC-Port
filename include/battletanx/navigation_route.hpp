@@ -4,6 +4,7 @@
 #include "battletanx/state_hash.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -32,8 +33,10 @@ enum class NavigationRouteStop : std::uint8_t {
 };
 
 struct RoutePlannerLimits {
-    // D_80135840: per-class extra step cost. It is runtime BSS; the writer
-    // was not recovered, so the defaults are zero (UNRESOLVED).
+    // D_80135840: per-class extra step cost (f32[5], BSS). Every asm
+    // reference is a read (func_800DF2DC, func_800DF3A0, func_800DFA68 via an
+    // addiu base + lwc1); no store or computed-pointer write exists, so the
+    // table keeps its zero-initialised BSS value (STRONG INFERENCE: zero).
     std::array<float,5> class_costs{};
     // Entries kept by reconstruction; extra steps are dropped (retail push fails).
     std::uint16_t route_capacity{static_cast<std::uint16_t>(navigation_route_capacity)};

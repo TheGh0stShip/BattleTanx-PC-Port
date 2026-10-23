@@ -12,7 +12,14 @@
 #include <functional>
 #include <optional>
 #include <span>
+#include <type_traits>
 #include <vector>
+
+// Consumer value types (defined in placed_objects.hpp / queen_world.hpp; include
+// those headers to call the adapters below). Not included here so that
+// spawner_runtime.hpp, which includes this header, stays acyclic.
+namespace battletanx::placed { struct TurretSpawn; }
+namespace battletanx::queen_world { struct LevelObject; struct MarkerBankEntry; }
 
 namespace battletanx {
 
@@ -114,6 +121,10 @@ enum class PlanAuditReason : std::uint8_t {
     goliath_hold_rule_untraced,   // human kind-2 marker: func_80096FC8 untraced
 };
 
+static_assert(std::is_same_v<std::underlying_type_t<SpawnPlanError>,std::uint8_t>);
+static_assert(std::is_same_v<std::underlying_type_t<PlacementSource>,std::uint8_t>);
+static_assert(std::is_same_v<std::underlying_type_t<PlanAuditReason>,std::uint8_t>);
+
 struct PlanAudit {
     std::uint8_t owner{};
     std::uint8_t slot{};
@@ -190,13 +201,16 @@ enum class RespawnPolicy : std::uint8_t {
     campaign_markers,                    // func_800A5348 first clear marker in order
     team_spawn_row_random_offset,        // func_800A5348 rotating from random%5
 };
+static_assert(std::is_same_v<std::underlying_type_t<RespawnPolicy>,std::uint8_t>);
 
 struct OwnerRespawnPoints {
     RespawnPolicy policy{};
-    std::vector<SpawnRespawnPoint> points;          // respawn_squad_unit candidates
-    // respawn_squad_member (func_800A5784) candidates in every kind: marker
-    // group entries 1..4, each reusable 360 ticks after its last use.
-    std::vector<SpawnRespawnPoint> member_points;
+    // respawn_squad_unit candidates. For campaign_markers this is the whole
+    // marker group; respawn_squad_member (func_800A5784, kinds 3..6 only) uses
+    // entries 1..n-1 of the same list. Hosts build one
+    // std::vector<spawner_runtime::MemberMarker> from it (entry i == points[i])
+    // so both paths share last_used.
+    std::vector<SpawnRespawnPoint> points;
 };
 
 struct CampaignSpawnPlan {
@@ -224,9 +238,34 @@ void assign_slot_order(std::int32_t game_kind,RetailRandom& rng,
                        std::array<std::uint8_t,spawn_owner_count>& rank) noexcept;
 
 // Random-number order: slot shuffle, fixed pickup re-rolls in item order, then
-// the distributed pickups (spot draw, then re-roll, per pickup).
+// the distributed pickups (distribute_random_pickups with input.pickup_reroll:
+// spot draw(s), then at most one re-roll draw, per copy).
 [[nodiscard]] std::optional<CampaignSpawnPlan> build_campaign_spawn_plan(
     const CampaignSpawnInput& input,const WorldLevel& level,
     const NavigationLevel* navigation,RetailRandom& rng,SpawnPlanError* error);
+
+// ---- Consumer adapters (value outputs; nothing here draws random numbers) ----
+//
+// placed_objects: bank type 22 -> func_800A1408(team, player, side, value14,
+// pos, pos, 0, flag, 0) (spawn_bank_record_entries.c:248): check_area=false,
+// scaled=flagged, type=sub_kind. Feed to placed::World::spawn_turret in plan order.
+[[nodiscard]] placed::TurretSpawn owned_object_turret_spawn(const OwnedObjectPlacement& object) noexcept;
+
+// spawner_runtime: PlannedSpawner::definition is the SpawnerDefinition that
+// spawner_runtime::SpawnerSet::create takes directly (with input.game_kind).
+// Unlinked spawners pass linked_serial=nullopt; linked (placed type 20) ones
+// need the serial of their kind-5 effect, which the caller owns.
+
+// queen_world: placed (non-bank) items of type 11..14 in scan order, for
+// QueenWorld::place_level_object. active=false when load_level_data clears the
+// object (mode flags 0x10/0x40 or the flags&2 capacity gate,
+// load_level_data.c:401,479-486). Requires the plan built from this level.
+[[nodiscard]] std::vector<queen_world::LevelObject> queen_level_objects(
+    const CampaignSpawnPlan& plan,const WorldLevel& level);
+
+// queen_world: bank type-24 items that passed the bank mode filter, in item
+// order, for QueenWorld::place_bank_entry (which applies the view-count rule).
+[[nodiscard]] std::vector<queen_world::MarkerBankEntry> objective_marker_entries(
+    const CampaignSpawnPlan& plan,const WorldLevel& level);
 
 } // namespace battletanx

@@ -1,7 +1,7 @@
 #include "battletanx/pickup_effects.hpp"
 #include "runtime_test_support.hpp"
 
-#include <array>
+#include <climits>
 
 using namespace battletanx;
 
@@ -129,8 +129,7 @@ RUNTIME_TEST(announce_adds_progress_and_event) {
 }
 
 RUNTIME_TEST(unknown_kinds_are_reported) {
-    constexpr std::array<std::uint8_t,7> unknown{6U,17U,20U,21U,22U,40U,255U};
-    for (const std::uint8_t kind : unknown) {
+    for (const std::uint8_t kind : {6U,17U,20U,21U,22U,40U,255U}) {
         Setup s;
         const UnitRecord before=s.unit;
         const PickupEffectResult r=s.apply(kind);
@@ -189,6 +188,69 @@ RUNTIME_TEST(timed_state_serializes_big_endian) {
     t.serialize(w);
     REQUIRE(w.bytes().size()==17U);
     REQUIRE(w.bytes()[0]==1U && w.bytes()[3]==4U);
+    return true;
+}
+
+RUNTIME_TEST(every_kind_in_every_game_mode) {
+    // Only owner progress/lives depend on the mode: lives on a 50000 crossing in
+    // modes 3..7; respawn_bank[0] grows except in mode 7; unit effects are mode-free.
+    for (std::int32_t mode=0; mode<=9; ++mode) {
+        const bool progress_lives=mode>=3 && mode<=7;
+        for (std::uint8_t kind=0U; kind<=21U; ++kind) {
+            Setup s;
+            s.options.game_mode=mode;
+            s.unit.health=50;
+            s.owner.score=49500;
+            const PickupEffectResult r=s.apply(kind);
+            REQUIRE(r.kind==kind);
+            if (kind==6U || kind==17U || kind==20U || kind==21U) {
+                REQUIRE(r.status==PickupEffectStatus::no_retail_case);
+                REQUIRE(s.unit.health==50 && s.owner.score==49500 && r.lives_awarded==0U);
+                continue;
+            }
+            REQUIRE(r.status==PickupEffectStatus::applied);
+            if (kind==13U) {
+                REQUIRE(r.lives_awarded==1U && s.owner.respawn_bank[0]==(mode!=7 ? 1 : 0));
+            } else if (kind==14U) {
+                REQUIRE(s.owner.score==50400 && r.score_delta==900);
+                REQUIRE(r.lives_awarded==(progress_lives ? 1U : 0U));
+                REQUIRE(s.owner.respawn_bank[0]==((progress_lives && mode!=7) ? 1 : 0));
+            } else {
+                REQUIRE(s.owner.score==49500 && r.lives_awarded==0U && s.owner.respawn_bank[0]==0);
+            }
+            if (kind==0U) REQUIRE(s.unit.health==80);
+            if (kind==11U) REQUIRE(s.unit.health==70);
+            // Announced progress: 49950+100 crosses the threshold.
+            Setup a;
+            a.options.game_mode=mode;
+            a.options.announce=true;
+            a.owner.score=49950;
+            const PickupEffectResult ar=a.apply(kind);
+            REQUIRE(ar.announced && ar.owner_event==static_cast<std::int32_t>(kind)+11);
+            const std::uint8_t extra=kind==13U ? 1U : 0U;
+            REQUIRE(ar.lives_awarded==static_cast<std::uint8_t>((progress_lives ? 1U : 0U)+extra));
+            // Computer owners never gain lives in any mode.
+            Setup c;
+            c.options.game_mode=mode;
+            c.owner.computer=true;
+            c.owner.score=49500;
+            const PickupEffectResult cr=c.apply(kind);
+            REQUIRE(cr.lives_awarded==0U && c.owner.respawn_bank[0]==0);
+            if (kind==13U) REQUIRE(cr.status==PickupEffectStatus::no_change);
+        }
+    }
+    return true;
+}
+
+RUNTIME_TEST(health_scaling_saturates) {
+    Setup s;
+    s.unit.max_health=INT32_MAX;
+    s.unit.health=10;
+    const PickupEffectResult r=s.apply(0U);
+    REQUIRE(r.status==PickupEffectStatus::applied && s.unit.health>10);
+    s.unit.health=INT32_MAX-5;
+    s.apply(11U);
+    REQUIRE(s.unit.health==INT32_MAX);
     return true;
 }
 

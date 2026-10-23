@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <type_traits>
 
 namespace battletanx {
 
@@ -151,7 +152,8 @@ enum class PerceptionPolicy : std::uint8_t {
 
 // Parameters read by the play monitors through ai_get_parameter (func_800E9720).
 // Provider-backed keys whose providers are not ported are supplied by the
-// caller and default to 0.
+// caller per member slot and default to 0. Keys computed by this module
+// (0x1000..0x1007, 0x1104..0x1107, 0x111B, 0x8100) are not listed here.
 struct ExternalParameters {
     float p1003_hold{};  // member slot 3
     float p1100{};
@@ -163,6 +165,25 @@ struct ExternalParameters {
     float p1117{};
     float p2111{};
     float p8103{};
+    // Plays 8/13/19..23 (provider table gAiMemberParameterProviders, ROM 0xC5980).
+    float p1102{};       // func_800E8D64 route progress ratio (unit +0x4E4/+0x4E0)
+    float p1103{};       // func_800E8DAC 1 - progress ratio
+    float p1108{};       // func_800E8F84 linked unit behind (ai_measure_relative_point)
+    float p1109{};       // func_800E9008 linked unit ahead
+    float p1110{};       // func_800E9288 member link-chain weight (0.2 per record)
+    float p1111{};       // func_800E92B8 inverse chain weight
+    float p1113{};       // func_800E9318 member metric
+    // Owner providers (gAiOwnerParameterProviders, ROM 0xC5920).
+    float p210E{};       // func_800E8768 owner timer progress
+    float p2113{};       // func_800E8B6C objective chain-state weight
+    float p2116{};       // func_800E89B8 owner chain-length weight
+    float p2117{};       // func_800E8A48 1 - chain weight
+    // Member facts read outside ai_get_parameter.
+    std::uint8_t unit_class{};  // unit +0x357 ('A'..'F' = 0x41..0x46), func_800EA2A4
+    bool status_one{};          // func_800E3470: skips the unit (func_800E63F4) and picks root 11
+    // Route segment (unit +0x4D0 origin, +0x4D8 direction, +0x4E0 length) read by
+    // ai_select_owner_target_member (func_800E6D58).
+    float segment_x{}, segment_z{}, segment_dx{}, segment_dz{}, segment_length{};
 };
 
 // ---------------------------------------------------------------------------
@@ -193,8 +214,11 @@ struct ScoredTarget {
 // ---------------------------------------------------------------------------
 // Goals (unit +0x9C move goal, +0xB4 aim goal).
 
+// object_list (2) is the aim-goal form written by func_800E3980 with
+// enabled=0 (ai_dispatch_owner_position, func_800E6BBC): aim at an owner
+// record's position. It never requests a route.
 enum class GoalMode : std::uint8_t {
-    none=0U, unit=1U, chase=5U, point=6U, point_route=7U, follow=8U, path=9U, point_alt=12U,
+    none=0U, unit=1U, object_list=2U, chase=5U, point=6U, point_route=7U, follow=8U, path=9U, evasion=10U, point_alt=12U,
 };
 
 struct AiGoal {
@@ -229,7 +253,17 @@ struct PlayStack {
 
 // Root play for a member (func_800EA2A4, context kind 2).
 [[nodiscard]] std::uint8_t select_member_root_play(std::uint8_t unit_class,bool class4,bool status_one) noexcept;
+// True for every play this member play runner runs.
 [[nodiscard]] bool play_supported(std::uint8_t play) noexcept;
+
+// Which context runs a retail play (script table D_80137888, plays 1..28).
+// member: reachable from a member root (func_800EA2A4 kind 2), from a role
+//   table (gAiPlaySlotTables, ROM 0xC5CF8) or pushed by such a play.
+// owner: reached only from owner roots (kind 1); ported in campaign_owner_plays.
+// unreachable: neither a root, a role-table entry, nor pushed by any script step.
+enum class PlayScope : std::uint8_t { invalid, member, owner, unreachable };
+static_assert(std::is_same_v<std::underlying_type_t<PlayScope>,std::uint8_t>);
+[[nodiscard]] PlayScope play_scope(std::uint8_t play) noexcept;
 
 // ---------------------------------------------------------------------------
 // Layer 4: route request / response. Planning lives in another module.
@@ -284,6 +318,13 @@ struct CampaignAiCommand {
     bool self_destruct{};        // stuck timer expiry (ai_award_self_kill_credit)
     bool owner_event{};          // func_800EB440 emitted the 0x1003 owner event
     bool owner_command_cleared{};// func_800EB110
+    // ai_update_random_metric (func_800E7168) results.
+    std::uint8_t ammo_grant_slot{0xFFU};   // unit +0x480 slot gaining 4 (0xFF none)
+    bool marker_request{};                 // metric 8: spawn_effect_kind_17 marker
+    // release_target (func_800E4A18): D_8033AAC8[owner] = 1.
+    bool owner_release_request{};
+    // ai_clear_linked_owner_value (func_800E73A4): owner +0x4FC -> +0x18 = 0.
+    bool owner_linked_value_cleared{};
 };
 
 struct CampaignAiConfig {
@@ -296,7 +337,37 @@ struct CampaignAiConfig {
     float mission_minutes{10.0F};
     // Retail "kind == 2" selects owner +0x328; its port kind is unresolved.
     std::optional<retail::UnitKind> retail_kind2{};
+    // get_difficulty_level (D_80134E64 option 0..2); func_800E7168 does nothing at >= 2.
+    std::uint8_t difficulty_level{};
+    // Level record +0x214/+0x215/+0x216: chance*255 for metrics 8/3/2.
+    std::array<std::uint8_t,3> metric_levels{};
 };
+
+// Owner-record fields written or read by member plays. The owner-play module
+// (campaign_owner_plays) owns role (+0x14C) and objective (+0x1A8); the caller
+// mirrors the objective here each tick with set_owner_objective.
+struct MemberOwnerFields {
+    std::uint8_t objective{0xFFU};       // owner +0x1A8 (owner record index, 0xFF none)
+    std::optional<std::array<float,2>> objective_point{}; // func_800E377C(objective)
+    std::optional<std::array<float,2>> anchor{};          // func_800E377C(this owner)
+    std::uint8_t target_member{0xFFU};   // owner +0x1AA (func_800E6D58), unit slot
+    float action_value{};                // owner +0x1A0 (func_800E7064)
+    bool flag_active{};                  // owner +0x1A4 (func_800E70B0/func_800E70C4)
+    bool flag_requested{};               // owner +0x1A5
+    std::int32_t timer_start{};          // owner +0x198 (func_800E70DC)
+    std::int32_t timer_end{};            // owner +0x19C
+    bool release_pending{};              // D_8033AAC8[owner]
+
+    void serialize(StateWriter& writer) const;
+};
+
+enum class PlayAssignStatus : std::uint8_t { ok, unchanged, unknown_unit, not_member_play };
+static_assert(std::is_same_v<std::underlying_type_t<PlayAssignStatus>,std::uint8_t>);
+// force_member_root_play_status result. pending_update: the slot holds a live
+// entity that update() has not adopted yet (retry after the next update()).
+enum class ForceRootPlayStatus : std::uint8_t { ok, invalid_play, unknown_unit, pending_update };
+static_assert(std::is_same_v<std::underlying_type_t<ForceRootPlayStatus>,std::uint8_t>);
+static_assert(std::is_same_v<std::underlying_type_t<GoalMode>,std::uint8_t>);
 
 struct CampaignAiUnitState {
     EntityId unit{};
@@ -313,6 +384,9 @@ struct CampaignAiUnitState {
     std::int32_t last_fire_tick{retail::never_fired_tick};
     std::int32_t stuck_deadline{};
     bool had_contact{};
+    std::int32_t deadline{};      // unit +0x360 (func_800E73E0 / func_800E96C0)
+    bool flag_2ba{};              // unit +0x2BA (func_800E7380 / func_800E7394)
+    std::uint8_t last_metric{};   // unit +0x474 (func_800E7168)
     std::optional<RouteResponse> route{};
     std::uint32_t pending_serial{};
 
@@ -340,6 +414,35 @@ public:
     // Accepts a response for the last request of that unit (serial must match).
     bool apply_route_response(const RouteResponse& response) noexcept;
 
+    // Owner-play hooks. assign_member_play is ai_assign_member_play_slots'
+    // per-member step: unwind the member stack to depth 0 and push play,
+    // skipped when frames[0] already holds that play.
+    PlayAssignStatus assign_member_play(EntityId unit,std::uint8_t play) noexcept;
+    // Unconditional form used by campaign_owner_plays for AssignResult.changes:
+    // ai_play_stack_unwind(member,0) + ai_play_stack_push(stack,play). Accepts
+    // any play 1..28; a play this runner does not run is reported as
+    // unsupported_play on the next update. False for an unknown unit or play 0/>28.
+    // ORDERING: a unit is known only after update() has seen its slot, so run
+    // CampaignAiController::update before update_owner_plays in each tick. A
+    // unit spawned this tick returns false (pending_update) and the caller must
+    // re-issue the change after the next update(); it is never silently kept.
+    bool force_member_root_play(EntityId unit,std::uint8_t play) noexcept;
+    // Same operation with an explicit result the caller can check and retry on.
+    [[nodiscard]] ForceRootPlayStatus force_member_root_play_status(EntityId unit,std::uint8_t play) noexcept;
+    // Retail unit +0x9C (move-goal mode) for owner_plays::MemberView::state.
+    [[nodiscard]] std::uint8_t member_goal_mode(EntityId unit) const noexcept;
+    // frames[0].play, or 0 for an empty stack / unknown unit.
+    [[nodiscard]] std::uint8_t member_root_play(EntityId unit) const noexcept;
+    void set_owner_objective(std::uint8_t owner,std::uint8_t objective,
+                             std::optional<std::array<float,2>> objective_point) noexcept;
+    void set_owner_anchor(std::uint8_t owner,std::optional<std::array<float,2>> anchor) noexcept;
+    [[nodiscard]] const MemberOwnerFields* owner_fields(std::uint8_t owner) const noexcept {
+        return owner<owner_capacity ? &owner_fields_[owner] : nullptr;
+    }
+    MemberOwnerFields* owner_fields(std::uint8_t owner) noexcept {
+        return owner<owner_capacity ? &owner_fields_[owner] : nullptr;
+    }
+
     CampaignAiOutput update(const UnitPool& units,const std::array<OwnerRecord,owner_capacity>& owners,
                             const AngleTable& angles,RetailRandom& rng,const CampaignAiFrame& frame,
                             std::span<CampaignAiCommand> commands,std::span<RouteRequest> routes);
@@ -356,6 +459,7 @@ private:
     CampaignAiConfig config_;
     std::array<CampaignAiUnitState,unit_capacity> state_{};
     std::array<std::optional<OwnerDifficulty>,owner_capacity> owners_{};
+    std::array<MemberOwnerFields,owner_capacity> owner_fields_{};
     std::uint8_t round_robin_{};
     std::uint32_t serial_{};
 };

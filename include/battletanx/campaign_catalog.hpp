@@ -49,7 +49,8 @@ enum class CampaignObjectiveKind : std::uint8_t {
     // finds a goal slot, or player 0 loses its squad. Who fills the goal
     // counters (D_802DF344 / D_802DF340) is UNRESOLVED.
     goal_slot,
-    // kind 4: won when player 0's result flag becomes 2 (setter UNRESOLVED);
+    // kind 4: won when player 0's result flag becomes 2 (CONFIRMED: result 9
+    // maps to the flag at update_tank_drive.c:637);
     // lost when team 0 has no living squad.
     player_win_flag,
     // kind 7: last-team-standing rule inside the endurance repeat loop
@@ -134,6 +135,19 @@ struct CampaignWaveDefinition {
 // Mission id stored at save offset 0x08 -> wave to resume (nullptr = no wave;
 // the original returns to the menu in that case).
 [[nodiscard]] const CampaignWaveDefinition* campaign_wave_for_record(const CampaignRecord& record) noexcept;
+// Explicit resume classification for a saved mission id. TEMPORARY POLICY:
+// retail never writes id 0 (the final wave does not save; see
+// campaign_save_transaction.cpp), but the table's post-final id word truncates
+// to 0, so id 0 is treated as campaign complete for robustness against
+// external or corrupt records. Any other id with no matching wave is unknown. Lookup is a linear scan of the
+// catalog, so no id can index out of bounds.
+enum class CampaignResumeStatus : std::uint8_t { resume_wave, campaign_complete, unknown_mission };
+static_assert(sizeof(CampaignResumeStatus)==1U);
+struct CampaignResume {
+    CampaignResumeStatus status=CampaignResumeStatus::unknown_mission;
+    const CampaignWaveDefinition* wave=nullptr; // non-null only for resume_wave
+};
+[[nodiscard]] CampaignResume campaign_resume_for_record(const CampaignRecord& record) noexcept;
 [[nodiscard]] std::optional<std::array<std::int16_t,4>> campaign_gun_table(std::uint32_t vram) noexcept;
 
 // Endurance (kind 7) per-owner split from setup_players for owners 1..3.

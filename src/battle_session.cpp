@@ -345,9 +345,8 @@ void BattleSession::update_turrets() {
                                    unit!=nullptr && unit->control==UnitControl::computer};
     }
     CombatContext combat=combat_context();
-    WeaponBaseContext base{combat,world_,angles_};
-    WeaponContext weapons{base,weapon_state_,effects_,rng_};
-    attach_turret_collision(weapons);
+    ProjectileContext projectiles{combat,shells_,world_,angles_};
+    WeaponContext weapons{projectiles,weapon_state_,effects_,rng_};
     for (std::size_t turret_index=0U; turret_index<turrets_.size(); ++turret_index) {
         TurretRecord& turret=turrets_[turret_index];
         if (turret.removed || turret.owner>=owner_capacity) continue;
@@ -371,8 +370,32 @@ void BattleSession::update_turrets() {
                               turret_search_range,rng_,area_clear,line_of_sight};
         const TurretUpdateResult result=update_turret(turret,context);
         if (!result.shot) continue;
-        (void)spawn_turret_projectile(
-            weapons,*result.shot,turret.owner,static_cast<std::uint16_t>(turret_index));
+        if (result.shot->projectile==3) {
+            BeamSpawn beam;
+            beam.x=result.shot->x;
+            beam.y=turret_muzzle_y;
+            beam.z=result.shot->z;
+            beam.heading=result.shot->heading;
+            beam.attacker=turret.owner;
+            beam.damage=static_cast<std::uint8_t>(std::max<std::int16_t>(0,result.shot->effect_kind));
+            beam.ignore=no_entity;
+            (void)fire_beam(projectiles,beam);
+        } else {
+            BulletSpawn bullet;
+            bullet.x=result.shot->x;
+            bullet.y=turret_muzzle_y;
+            bullet.z=result.shot->z;
+            bullet.heading=result.shot->heading;
+            bullet.speed=static_cast<float>(result.shot->speed);
+            bullet.has_velocity=true;
+            bullet.velocity_x=result.shot->velocity_x;
+            bullet.velocity_z=result.shot->velocity_z;
+            bullet.damage=static_cast<std::uint8_t>(std::max<std::int16_t>(0,result.shot->effect_kind));
+            bullet.attacker=turret.owner;
+            bullet.trail=0x10U;
+            bullet.ignore=no_entity;
+            (void)spawn_bullet(projectiles,bullet);
+        }
         SoundEvent sound;
         sound.sound_id=result.shot->sound;
         sound.x=turret.x;
@@ -382,12 +405,12 @@ void BattleSession::update_turrets() {
     }
 }
 
-void BattleSession::attach_turret_collision(WeaponContext& context) {
-    context.external_hit=[this](float x0,float z0,float x1,float z1,std::uint16_t ignore) {
-        std::optional<WeaponContext::ExternalHit> nearest;
+void BattleSession::attach_turret_collision(ProjectileHooks& hooks) {
+    hooks.external_hit=[this](float x0,float z0,float x1,float z1) {
+        std::optional<ExternalSegmentHit> nearest;
         for (std::size_t index=0U; index<turrets_.size() && index<0xFFFFU; ++index) {
             const TurretRecord& turret=turrets_[index];
-            if (index==ignore || turret.removed || turret.health<=0 || turret.type>=turret_types) continue;
+            if (turret.removed || turret.health<=0 || turret.type>=turret_types) continue;
             const float half=turret_scale[turret.type]*turret_half_extent;
             const retail::Footprint footprint{
                 static_cast<std::int16_t>(-half),static_cast<std::int16_t>(half),
@@ -395,17 +418,16 @@ void BattleSession::attach_turret_collision(WeaponContext& context) {
             const auto distance=segment_footprint_distance(
                 x0,z0,x1,z1,turret.x,turret.z,angles_.sine(turret.heading),
                 angles_.cosine(turret.heading),footprint);
-            if (distance && (!nearest || *distance<nearest->distance)) {
-                nearest=WeaponContext::ExternalHit{static_cast<std::uint16_t>(index),*distance};
-            }
+            if (distance && (!nearest || *distance<nearest->distance))
+                nearest=ExternalSegmentHit{static_cast<std::uint16_t>(index),*distance};
         }
         return nearest;
     };
-    context.external_response=[this](std::uint16_t token,const ProjectileContact& contact) {
+    hooks.external_response=[this](std::uint16_t token,const ProjectileContact& contact) {
         if (token>=turrets_.size()) return ObjectResponse{HitResponse::pass_through,0U};
         TurretRecord& turret=turrets_[token];
         const TurretDamageResult result=damage_turret(
-            turret,2U,contact.damage,contact.attacker,contact.angle,owners_,tick_,
+            turret,34U,contact.damage,contact.attacker,contact.angle,owners_,tick_,
             static_cast<std::int32_t>(config_.mission.game_kind));
         return ObjectResponse{result.handled ? HitResponse::impact : HitResponse::pass_through,0U};
     };
@@ -476,28 +498,22 @@ void BattleSession::update_queens() {
 }
 
 void BattleSession::update_pickup_state() {
-    std::array<PickupCollector,unit_capacity> collectors{};
+    std::array<powerup::Collector,unit_capacity> collectors{};
     std::size_t count=0U;
     units_.for_each([&](EntityId id,UnitRecord& unit) {
         if (!unit.alive) return;
         const std::uint8_t owner_class=unit.owner<owner_capacity ? owners_[unit.owner].team : unit.team;
-        collectors[count++]=PickupCollector{id,&unit,owner_class,
-                                            static_cast<std::uint8_t>(unit.control==UnitControl::computer ? 2U : 0U)};
+        if (unit.owner>=owner_capacity || id.slot>=timed_powerups_.size()) return;
+        collectors[count++]=powerup::Collector{
+            id,&unit,&owners_[unit.owner],&timed_powerups_[id.slot],owner_class,
+            powerup::retail_unit_mode(unit.control,unit.squad_slot!=0U)};
     });
-    const PickupApply apply=[&](PickupCollector& collector,std::uint8_t kind) {
-        if (collector.unit==nullptr || collector.id.slot>=timed_powerups_.size() ||
-            collector.unit->owner>=owner_capacity) return false;
-        PickupEffectOptions options;
-        options.base=config_.pickups;
-        options.game_mode=static_cast<std::int32_t>(config_.mission.game_kind);
-        options.tick=tick_;
-        const PickupEffectResult result=apply_pickup_effect_complete(
-            *collector.unit,owners_[collector.unit->owner],kind,options,
-            timed_powerups_[collector.id.slot]);
-        return result.status==PickupEffectStatus::applied;
-    };
-    collect_pickups(pickups_,std::span<PickupCollector>(collectors.data(),count),tick_,config_.pickups,
-                    events_,sounds_,apply);
+    PickupEffectOptions options;
+    options.base=config_.pickups;
+    options.game_mode=static_cast<std::int32_t>(config_.mission.game_kind);
+    options.tick=tick_;
+    (void)powerup::collect_with_effects(
+        pickups_,std::span<const powerup::Collector>(collectors.data(),count),options,events_,sounds_);
     for (std::size_t slot=0U; slot<unit_capacity; ++slot) {
         if (units_.slot_occupied(slot)) update_timed_powerups(timed_powerups_[slot],tick_);
     }
@@ -574,7 +590,7 @@ void BattleSession::update_units(const SessionInput& input) {
     }
 
     CombatContext combat=combat_context();
-    WeaponBaseContext projectiles{combat,world_,angles_};
+    ProjectileContext projectiles{combat,shells_,world_,angles_};
     WeaponContext weapons{projectiles,weapon_state_,effects_,rng_};
     for (std::size_t slot=0U; slot<unit_capacity; ++slot) {
         const EntityId id=units_.slot_id(slot);
@@ -681,9 +697,11 @@ void BattleSession::step(const SessionInput& input) {
     if (mission_.simulation_running() && mission_.state()!=MatchState::paused) {
         release_destroyed_units();
         CombatContext combat=combat_context();
-        WeaponBaseContext projectiles{combat,world_,angles_};
+        ProjectileContext projectiles{combat,shells_,world_,angles_};
+        ProjectileHooks hooks;
+        attach_turret_collision(hooks);
+        projectiles.hooks=&hooks;
         WeaponContext weapons{projectiles,weapon_state_,effects_,rng_};
-        attach_turret_collision(weapons);
         update_weapon_projectiles(weapons);
         update_units(input);
         update_turrets();
@@ -735,6 +753,7 @@ void BattleSession::serialize(StateWriter& writer) const {
         writer.boolean(pickup.removed);
     }
     weapon_state_.serialize(writer);
+    serialize_projectiles(writer,shells_);
     for (const TimedPowerupState& timed : timed_powerups_) timed.serialize(writer);
     writer.u32(static_cast<std::uint32_t>(turrets_.size()));
     for (const TurretRecord& turret : turrets_) turret.serialize(writer);

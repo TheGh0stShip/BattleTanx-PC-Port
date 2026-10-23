@@ -2,22 +2,20 @@
 
 #include "battletanx/level_spawns.hpp"
 
+#include "battletanx/pickup_effects.hpp"
+#include "battletanx/powerup_state.hpp"
+#include "battletanx/runtime_math.hpp"
+
 #include <algorithm>
-#include <cmath>
-#include <numbers>
 
 namespace battletanx {
 namespace {
 
-void add_ammo(UnitRecord& unit,std::size_t slot,std::uint16_t amount) noexcept {
-    // Retail ammo is u16 with no clamp; keep the 16-bit wrap.
-    const auto value=static_cast<std::uint16_t>(static_cast<std::uint16_t>(unit.ammo[slot])+amount);
-    unit.ammo[slot]=static_cast<std::int16_t>(value);
-}
-
-void add_health_fraction(UnitRecord& unit,float fraction) noexcept {
-    unit.health+=static_cast<std::int32_t>(static_cast<float>(unit.max_health)*fraction);
-    if (unit.health>unit.max_health) unit.health=unit.max_health;
+const AngleTable& host_angles() {
+    // Deterministic polynomial table; callers with the retail table use the
+    // AngleTable overload.
+    static const AngleTable table=reference_angle_table();
+    return table;
 }
 
 } // namespace
@@ -35,14 +33,26 @@ bool pickup_kind_allowed(std::uint8_t kind,const PickupOptions& options) noexcep
 }
 
 bool pickup_kind_supported(std::uint8_t kind) noexcept {
-    return kind==0U || kind==5U || kind==11U;
+    // Kinds whose retail case changes only the unit (13, 14 need the owner).
+    switch (kind) {
+    case 0: case 1: case 2: case 3: case 4: case 5: case 7: case 8: case 9: case 10:
+    case 11: case 12: case 15: case 16: case 18: case 19:
+        return true;
+    default:
+        return false;
+    }
 }
 
 bool pickup_overlaps(const PickupRecord& pickup,const UnitRecord& unit) noexcept {
-    // Unit body: axis-aligned bounds of the rotated footprint.
-    const float radians=unit.heading_degrees*(std::numbers::pi_v<float>/180.0F);
-    const float c=std::cos(radians);
-    const float s=std::sin(radians);
+    return pickup_overlaps(pickup,unit,host_angles());
+}
+
+bool pickup_overlaps(const PickupRecord& pickup,const UnitRecord& unit,const AngleTable& angles) noexcept {
+    // Unit body: axis-aligned bounds of the rotated footprint (TEMPORARY POLICY;
+    // the unit grid-body registration is not traced). Pickup body -35..35.
+    const std::uint16_t angle=degrees_to_retail_angle(unit.heading_degrees);
+    const float c=angles.cosine(angle);
+    const float s=angles.sine(angle);
     const std::array<float,2> lx{static_cast<float>(unit.footprint.min_x),
                                  static_cast<float>(unit.footprint.max_x)};
     const std::array<float,2> lz{static_cast<float>(unit.footprint.min_z),
@@ -63,47 +73,45 @@ bool pickup_overlaps(const PickupRecord& pickup,const UnitRecord& unit) noexcept
 }
 
 bool apply_pickup_effect(UnitRecord& unit,std::uint8_t kind,const PickupOptions& options) noexcept {
-    const std::uint8_t weapon=unit.primary_weapon.kind;
-    switch (kind) {
-    case 0:
-        // At full health retail stores the pack (+0x4A0); not modelled here.
-        if (unit.health<unit.max_health) add_health_fraction(unit,0.3F);
-        return true;
-    case 11:
-        add_health_fraction(unit,0.2F);
-        if (!options.ammo_with_crate_disabled) {
-            if (weapon==1U || weapon==3U) add_ammo(unit,weapon,15U);
-            else if (weapon==2U) add_ammo(unit,2U,35U);
-        }
-        return true;
-    case 5:
-        if (weapon==1U || weapon==3U) add_ammo(unit,weapon,30U);
-        else if (weapon==2U) add_ammo(unit,2U,70U);
-        return true;
-    default:
-        return false;
-    }
+    // Unit-only view of apply_pickup: no owner progress, no announce, no cloak
+    // option (kind 12 stocks slot 15). The shield link is approximated by a
+    // positive strength (TEMPORARY POLICY; use pickup_effects for the full state).
+    if (!pickup_kind_supported(kind)) return false;
+    OwnerRecord scratch_owner;
+    TimedPowerupState scratch_timed;
+    scratch_timed.shield_live=unit.shield_strength>0;
+    PickupEffectOptions effect_options;
+    effect_options.base=options;
+    effect_options.game_mode=options.game_mode;
+    effect_options.announce=false;
+    const PickupEffectResult result=apply_pickup_effect_complete(unit,scratch_owner,kind,effect_options,scratch_timed);
+    return result.status!=PickupEffectStatus::no_retail_case;
 }
 
 PickupCollectResult collect_pickups(std::span<PickupRecord> pickups,
                                     std::span<PickupCollector> collectors,
                                     std::int32_t tick,const PickupOptions& options,
-                                    GameplayEventQueue& events,SoundEventQueue& sounds,
-                                    const PickupApply& apply) {
+                                    GameplayEventQueue& events,SoundEventQueue& sounds) {
     PickupCollectResult result;
-    for (PickupRecord& pickup : pickups) {
-        if (pickup.removed || !pickup.active || pickup.consumed) continue;
-        for (PickupCollector& collector : collectors) {
-            UnitRecord* unit=collector.unit;
-            if (unit==nullptr || !unit->alive) continue;
-            if (static_cast<std::int32_t>(collector.owner_class)==pickup.owner_class) continue;
-            if (collector.state_350==2U) continue;
-            if (!pickup_overlaps(pickup,*unit)) continue;
+    // Retail order: each unit's drive update walks its own contacts, so the
+    // collector loop is the outer one.
+    for (PickupCollector& collector : collectors) {
+        UnitRecord* unit=collector.unit;
+        if (unit==nullptr || !unit->alive) continue;
+        for (PickupRecord& pickup : pickups) {
+            if (pickup.removed || !pickup.active) continue;
+            const powerup::ContactQuery query{
+                .pickup_consumed=pickup.consumed,
+                .contact_is_unit=true,
+                .collector_class=collector.owner_class,
+                .pickup_owner_class=pickup.owner_class,
+                .unit_mode=collector.state_350,
+            };
+            if (!powerup::pickup_contact_eligible(query) || !pickup_overlaps(pickup,*unit)) continue;
             pickup.consumed=true;
             pickup.active=false;
             ++result.collected;
-            const bool applied=apply ? apply(collector,pickup.kind) :
-                                       apply_pickup_effect(*unit,pickup.kind,options);
+            const bool applied=apply_pickup_effect(*unit,pickup.kind,options);
             if (!applied) ++result.unsupported;
             if (!options.replay_active) {
                 sounds.push(SoundEvent{retail::sound_pickup,unit->x,unit->y,unit->z,
@@ -119,7 +127,6 @@ PickupCollectResult collect_pickups(std::span<PickupRecord> pickups,
             event.x=pickup.x;
             event.z=pickup.z;
             events.push(event);
-            break;
         }
     }
     return result;
@@ -147,13 +154,9 @@ void update_pickups(std::span<PickupRecord> pickups,std::int32_t tick,
         }
         if (pickup.respawn_tick!=0 && pickup.respawn_tick<tick) {
             pickup.respawn_tick=0;
-            if (weights!=nullptr && weights->total!=0U) {
-                std::uint32_t roll=rng.next_u32()%weights->total;
-                std::size_t i=0U;
-                while (i<weights->weights.size() && roll>=weights->weights[i]) {
-                    roll-=weights->weights[i++];
-                }
-                pickup.kind=static_cast<std::uint8_t>(i);
+            if (weights!=nullptr) {
+                const powerup::WeightRoll roll=powerup::roll_weighted_kind(*weights,rng);
+                if (roll.kind) pickup.kind=*roll.kind;
             }
             pickup.active=true;
         }

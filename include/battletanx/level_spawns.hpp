@@ -146,12 +146,16 @@ struct LevelSpawnPlan {
 [[nodiscard]] std::uint8_t pick_effect_kind(std::uint8_t kind,bool reroll_option,
                                             RetailRandom& rng) noexcept;
 
-// Tail of func_80088670 outside 3..6: place spawnCounts[kind] pickups on random
-// unused spots. Returns nothing when the plan forbids it or spots < total.
+// Tail of func_80088670 outside 3..6 (spawn_bank_record_entries.c:271-283), the
+// single canonical distributor. For kind 0..21, for each copy: draw spots
+// (next_u32()%spots, re-drawing while taken), then pick_effect_kind(kind), which
+// draws once more only when reroll_option (D_80134E68) and kind is a re-roll kind.
+// Returns nothing (no draws) when the plan forbids it, any count is negative, or
+// spots < total (summed in 64 bits).
 [[nodiscard]] std::vector<PickupPlacement> distribute_random_pickups(
     const LevelSpawnPlan& plan,
     const std::array<std::int32_t,pickup_spawn_count_kinds>& spawn_counts,
-    RetailRandom& rng);
+    RetailRandom& rng,bool reroll_option=false);
 
 // ---- Runtime spawner (kind 0x1C update, func_8010D59C) ----
 
@@ -212,9 +216,19 @@ struct SpawnerUpdateResult {
 inline constexpr std::int32_t spawner_destroyed_cooldown_event=0x22;
 inline constexpr float spawner_destroyed_cooldown_seconds=3.0F;
 
+// DEPRECATED legacy wrapper. The canonical func_8010D59C implementation is
+// spawner_runtime::tick_spawner (spawner_runtime.hpp); update_spawner is a thin
+// adapter over it (defined in level_spawns.cpp so this header does not include
+// spawner_runtime.hpp, which includes this one). New code should call
+// tick_spawner / SpawnerSet::tick, which apply the kind-5 linked-identity rule
+// and wreck notifications themselves.
+//
 // The area callback returns true when the area is clear. It must apply the
-// retail grid rules itself (ignore kind 5 only when it is the linked effect,
-// notify kind 0x1A wrecks with message 4, block on anything else).
+// retail grid rules itself (ignore kind 5 only when it is this spawner's own
+// linked effect, notify kind 0x1A wrecks with message 4, block on anything
+// else). It is not called when the position cannot form an area box
+// (non-finite), which reports area_blocked. squad_slot_alive is not updated on
+// spawn; owner.budget is.
 using SpawnAreaClear=std::function<bool(const SpawnAreaQuery&)>;
 
 SpawnerUpdateResult update_spawner(SpawnerState& spawner,

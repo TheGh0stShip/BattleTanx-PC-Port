@@ -68,6 +68,27 @@ RUNTIME_TEST(find_by_mission_id_and_record) {
     return true;
 }
 
+RUNTIME_TEST(saved_mission_id_zero_is_campaign_complete) {
+    CampaignRecord record;
+    record.mission_id=0U;
+    REQUIRE(campaign_wave_for_record(record)==nullptr);
+    const CampaignResume done=campaign_resume_for_record(record);
+    REQUIRE(done.status==CampaignResumeStatus::campaign_complete && done.wave==nullptr);
+    // TEMPORARY POLICY: retail never writes id 0 (the final wave does not save);
+    // it is treated as completed for robustness. The post-final id word is 0.
+    const auto waves=campaign_wave_definitions();
+    REQUIRE(waves.back().saved_mission_id_after_clear==0U);
+    record.mission_id=10U;
+    const CampaignResume resume=campaign_resume_for_record(record);
+    REQUIRE(resume.status==CampaignResumeStatus::resume_wave && resume.wave->wave_index==9U);
+    for (const std::uint8_t id : {std::uint8_t{18U},std::uint8_t{0xFFU}}) {
+        record.mission_id=id;
+        const CampaignResume bad=campaign_resume_for_record(record);
+        REQUIRE(bad.status==CampaignResumeStatus::unknown_mission && bad.wave==nullptr);
+    }
+    return true;
+}
+
 RUNTIME_TEST(next_wave_and_save_advancement) {
     const auto waves=campaign_wave_definitions();
     for (std::size_t i=0U; i+1U<waves.size(); ++i) {

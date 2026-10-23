@@ -12,6 +12,7 @@
 #include "battletanx/objective_runtime.hpp"
 #include "battletanx/pickup_runtime.hpp"
 #include "battletanx/pickup_effects.hpp"
+#include "battletanx/powerup_state.hpp"
 #include "battletanx/state_hash.hpp"
 #include "battletanx/unit_kinds.hpp"
 #include "battletanx/weapon_runtime.hpp"
@@ -148,9 +149,8 @@ public:
     [[nodiscard]] std::int32_t tick() const noexcept { return tick_; }
     [[nodiscard]] const UnitPool& units() const noexcept { return units_; }
     [[nodiscard]] UnitPool& units() noexcept { return units_; }
-    [[nodiscard]] const WeaponProjectilePool& projectiles() const noexcept {
-        return weapon_state_.projectiles;
-    }
+    [[nodiscard]] const WeaponProjectilePool& projectiles() const noexcept { return shells_; }
+    [[nodiscard]] const ShellPool& shells() const noexcept { return shells_; }
     [[nodiscard]] const std::array<OwnerRecord,owner_capacity>& owners() const noexcept { return owners_; }
     [[nodiscard]] const MissionState& mission() const noexcept { return mission_; }
     [[nodiscard]] MissionState& mission() noexcept { return mission_; }
@@ -173,7 +173,7 @@ private:
     void update_pickup_state();
     void update_spawners();
     void update_turrets();
-    void attach_turret_collision(WeaponContext& context);
+    void attach_turret_collision(ProjectileHooks& hooks);
     void update_queens();
     void initialize_objective();
     void update_objective();
@@ -184,6 +184,7 @@ private:
     WorldCollision world_;
     RoutePlanner route_planner_;
     UnitPool units_;
+    ShellPool shells_;
     WeaponRuntimeState weapon_state_;
     std::array<OwnerRecord,owner_capacity> owners_{};
     std::array<bool,owner_capacity> objective_bases_{};

@@ -37,7 +37,7 @@ NavigationLevel make_grid(std::uint16_t width,std::uint16_t height,float offset_
 
 void link_adjacency(NavigationLevel& level) {
     std::map<std::pair<std::uint16_t,std::uint16_t>,std::uint16_t> edges;
-    for (std::uint16_t t=1U; t<level.triangles.size(); ++t) {
+    for (std::size_t t=1U; t<level.triangles.size(); ++t) {
         for (std::uint16_t side=0U; side<3U; ++side) {
             auto& corners=level.triangles[t].corners;
             std::uint16_t a=corners[side].vertex,b=corners[(side+1U)%3U].vertex;
@@ -335,6 +335,27 @@ RUNTIME_TEST(evasion_steps_repeat_farthest_open_edge) {
     REQUIRE(steps->corners[0]==steps->corners[1] && steps->corners[1]==steps->corners[2]);
     REQUIRE(steps->corners[0]/3U==triangle);
     REQUIRE(!plan_evasion_steps(level,0U,{}).has_value());
+    return true;
+}
+
+RUNTIME_TEST(class_cost_table_defaults_to_zero_and_adds_step_cost) {
+    // D_80135840 has no writer: the default table is all zero.
+    const RoutePlannerLimits defaults{};
+    for (const float cost : defaults.class_costs) REQUIRE(cost==0.0F);
+    auto level=grid(3U,2U);
+    const auto start=tri(3U,0U,0U,false),goal=tri(3U,2U,0U,false);
+    level.kind_enabled[5]=1U; // kind 5 = class 1, not blocked by 0xF8
+    level.triangles[tri(3U,1U,0U,false)].kind=5U;
+    level.triangles[tri(3U,1U,0U,true)].kind=5U;
+    const auto plain=plan_navigation_route(level,at(level,start),at(level,goal),0xF8U);
+    REQUIRE(plain.stop==NavigationRouteStop::reached);
+    RoutePlannerLimits costly;
+    costly.class_costs[1]=50000.0F;
+    const auto detour=plan_navigation_route(level,at(level,start),at(level,goal),0xF8U,costly);
+    REQUIRE(detour.stop==NavigationRouteStop::reached);
+    REQUIRE(route_is_connected(level,detour));
+    REQUIRE(!contains(detour,tri(3U,1U,0U,false)));
+    REQUIRE(!contains(detour,tri(3U,1U,0U,true)));
     return true;
 }
 
