@@ -159,6 +159,17 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                                       {point.x,point.z,point.heading});
         }
     }
+    if (wave.game_kind==3 || wave.game_kind==4 || wave.game_kind==6) {
+        for (const auto& item:world.items) {
+            if (item.type<11 || item.type>14) continue;
+            const std::size_t team_slot=static_cast<std::size_t>(item.type-11);
+            const std::uint8_t owner=spawn_plan->slot_rank[team_slot];
+            if (!session.add_queen_base(owner,item.x,item.z)) continue;
+        }
+        if ((wave.game_kind==3 || wave.game_kind==6) && session.queens().empty()) {
+            throw std::runtime_error("campaign queen objective has no base placements");
+        }
+    }
     std::optional<battletanx::EntityId> player_id;
     for (const auto& planned:spawn_plan->units) {
         const auto id=session.spawn_unit({planned.kind,planned.owner,planned.x,planned.z,
@@ -359,6 +370,20 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             draw.items.push_back({set,
                 battletanx::yaw_translation_matrix(
                     pickup_angle,pickup.x,pickup_y,pickup.z,angles),3U,0});
+        }
+        for (const auto& queen:session.queens()) {
+            if (queen.state==battletanx::QueenState::carried ||
+                queen.home_owner>=session.owners().size()) continue;
+            const std::uint8_t team=session.owners()[queen.home_owner].team;
+            if (team>3U) continue;
+            const std::uint32_t slot=0x5FU-team;
+            const std::uint32_t set=assets.set_base()+slot;
+            if (set>=assets.sets().size() || assets.set(set).lod_count==0U) continue;
+            const auto queen_ground=terrain.sample(queen.x,queen.z);
+            const float queen_y=queen_ground ? queen_ground->height : 0.0F;
+            draw.items.push_back({set,
+                battletanx::yaw_translation_matrix(
+                    pickup_angle,queen.x,queen_y,queen.z,angles),2U,0});
         }
         renderer.render(draw,assets);
         battletanx::HudState hud;

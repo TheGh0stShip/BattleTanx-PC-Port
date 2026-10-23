@@ -75,6 +75,16 @@ struct RespawnPoint {
     std::uint16_t heading{};
 };
 
+enum class QueenState : std::uint8_t { stored, carried, dropped };
+struct QueenRecord {
+    QueenState state{QueenState::stored};
+    std::uint8_t home_owner{};
+    std::uint8_t base_owner{};
+    EntityId carrier{};
+    float x{},z{};
+    std::int32_t dropped_tick{};
+};
+
 // Per-tick input for the local human owner (owner 0).
 struct SessionInput {
     DriveInput drive{};
@@ -97,11 +107,13 @@ public:
     static constexpr std::size_t turret_capacity=128U;
     bool add_turret(const OwnedObjectPlacement& placement);
     void set_turret_owner_config(std::uint8_t owner,const TurretOwnerConfig& config);
+    bool add_queen_base(std::uint8_t owner,float x,float z);
     void set_spawner_budget(std::uint8_t owner,std::int32_t budget);
     void set_spawner_gate(std::uint8_t owner,bool open);
     void set_pickup_weights(const PickupWeights& weights) { pickup_weights_=weights; }
     [[nodiscard]] std::span<const PickupRecord> pickups() const noexcept { return pickups_; }
     [[nodiscard]] std::span<const TurretRecord> turrets() const noexcept { return turrets_; }
+    [[nodiscard]] std::span<const QueenRecord> queens() const noexcept { return queens_; }
     // Damage from a source outside the session's own shells (splash, contact).
     DamageResult apply_damage(EntityId unit,std::int32_t amount,std::uint8_t attacker,bool direct);
     ObjectiveEventStatus queen_taken(std::uint8_t holder_team,std::uint8_t collector_team);
@@ -160,6 +172,7 @@ private:
     void update_spawners();
     void update_turrets();
     void attach_turret_collision(WeaponContext& context);
+    void update_queens();
     void initialize_objective();
     void update_objective();
 
@@ -182,6 +195,9 @@ private:
     std::vector<SessionSpawner> spawners_;
     std::vector<TurretRecord> turrets_;
     std::array<TurretOwnerConfig,owner_capacity> turret_owner_config_{};
+    struct QueenBase { std::uint8_t owner{}; float x{},z{}; };
+    std::vector<QueenBase> queen_bases_;
+    std::vector<QueenRecord> queens_;
     std::array<std::int32_t,owner_capacity> spawner_budgets_{};
     std::array<bool,owner_capacity> spawner_gates_{};
     std::optional<PickupWeights> pickup_weights_;

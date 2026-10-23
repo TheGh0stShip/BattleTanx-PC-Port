@@ -3,6 +3,7 @@
 #include "battletanx/unit_kinds.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <stdexcept>
 
@@ -269,6 +270,17 @@ bool BattleSession::add_turret(const OwnedObjectPlacement& placement) {
     return true;
 }
 
+bool BattleSession::add_queen_base(std::uint8_t owner,float x,float z) {
+    if (owner>=owner_capacity || !owners_[owner].present || queen_bases_.size()>=owner_capacity) return false;
+    if (std::any_of(queen_bases_.begin(),queen_bases_.end(),[owner](const QueenBase& base) {
+            return base.owner==owner;
+        })) return false;
+    queen_bases_.push_back(QueenBase{owner,x,z});
+    queens_.push_back(QueenRecord{QueenState::stored,owner,owner,no_entity,x,z,0});
+    objective_bases_[owner]=true;
+    return true;
+}
+
 void BattleSession::set_spawner_budget(std::uint8_t owner,std::int32_t budget) {
     if (owner>=owner_capacity) throw std::out_of_range("spawner owner index");
     spawner_budgets_[owner]=budget;
@@ -395,6 +407,70 @@ void BattleSession::attach_turret_collision(WeaponContext& context) {
             static_cast<std::int32_t>(config_.mission.game_kind));
         return ObjectResponse{result.handled ? HitResponse::impact : HitResponse::pass_through,0U};
     };
+}
+
+void BattleSession::update_queens() {
+    constexpr float queen_contact_half=20.0F;
+    constexpr float base_contact_half=195.0F;
+    constexpr std::int32_t dropped_return_ticks=120;
+    for (QueenRecord& queen : queens_) {
+        if (queen.state==QueenState::carried) {
+            UnitRecord* carrier=units_.get(queen.carrier);
+            if (carrier==nullptr || !carrier->alive) {
+                queen.state=QueenState::dropped;
+                queen.carrier=no_entity;
+                queen.dropped_tick=tick_;
+                continue;
+            }
+            queen.x=carrier->x;
+            queen.z=carrier->z;
+            for (const QueenBase& base : queen_bases_) {
+                if (base.owner>=owner_capacity || owners_[base.owner].team!=carrier->team) continue;
+                if (std::fabs(carrier->x-base.x)>base_contact_half ||
+                    std::fabs(carrier->z-base.z)>base_contact_half) continue;
+                queen.state=QueenState::stored;
+                queen.base_owner=base.owner;
+                queen.carrier=no_entity;
+                queen.x=base.x;
+                queen.z=base.z;
+                (void)queen_stored(owners_[base.owner].team);
+                break;
+            }
+            continue;
+        }
+        if (queen.state==QueenState::dropped && tick_>queen.dropped_tick+dropped_return_ticks) {
+            const auto home=std::find_if(queen_bases_.begin(),queen_bases_.end(),[&](const QueenBase& base) {
+                return base.owner==queen.home_owner;
+            });
+            if (home!=queen_bases_.end()) {
+                queen.state=QueenState::stored;
+                queen.base_owner=home->owner;
+                queen.x=home->x;
+                queen.z=home->z;
+                (void)queen_stored(owners_[home->owner].team);
+            }
+            continue;
+        }
+        std::optional<EntityId> collector;
+        units_.for_each([&](EntityId id,const UnitRecord& unit) {
+            if (collector || !unit.alive || std::fabs(unit.x-queen.x)>queen_contact_half ||
+                std::fabs(unit.z-queen.z)>queen_contact_half) return;
+            if (queen.state==QueenState::stored && queen.base_owner<owner_capacity &&
+                unit.team==owners_[queen.base_owner].team) return;
+            collector=id;
+        });
+        if (!collector) continue;
+        UnitRecord* unit=units_.get(*collector);
+        if (unit==nullptr) continue;
+        if (config_.mission.game_kind==4U && unit->owner==0U) (void)queen_contact(0U);
+        if (queen.state==QueenState::stored && queen.base_owner<owner_capacity) {
+            (void)queen_taken(owners_[queen.base_owner].team,unit->team);
+        }
+        queen.state=QueenState::carried;
+        queen.carrier=*collector;
+        queen.x=unit->x;
+        queen.z=unit->z;
+    }
 }
 
 void BattleSession::update_pickup_state() {
@@ -590,6 +666,7 @@ void BattleSession::step(const SessionInput& input) {
         update_turrets();
         update_spawners();
         update_pickup_state();
+        update_queens();
     }
     mission_.step(owners_,units_,tick_,input.start_pressed,input.advance,events_);
     update_objective();
@@ -641,6 +718,16 @@ void BattleSession::serialize(StateWriter& writer) const {
         writer.f32(owner.rebuild_time);
         for (const std::int16_t value : owner.effect_kind) writer.s16(value);
         for (const std::int16_t value : owner.fire_delay) writer.s16(value);
+    }
+    writer.u32(static_cast<std::uint32_t>(queen_bases_.size()));
+    for (const QueenBase& base : queen_bases_) {
+        writer.u8(base.owner); writer.f32(base.x); writer.f32(base.z);
+    }
+    writer.u32(static_cast<std::uint32_t>(queens_.size()));
+    for (const QueenRecord& queen : queens_) {
+        writer.u8(static_cast<std::uint8_t>(queen.state));
+        writer.u8(queen.home_owner); writer.u8(queen.base_owner); writer.id(queen.carrier);
+        writer.f32(queen.x); writer.f32(queen.z); writer.s32(queen.dropped_tick);
     }
     writer.u32(static_cast<std::uint32_t>(spawners_.size()));
     for (const SessionSpawner& runtime : spawners_) {
