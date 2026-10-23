@@ -253,8 +253,14 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
            0x1A*coordinate_scale,coordinate_scale,0xFFFFFFFFU);
 
     std::string_view banner;
+    std::array<char,2> countdown_text{};
     std::uint32_t color=0xE0FFFFFFU;
-    if (state.match_state==MatchState::paused) banner="PAUSED";
+    if (state.match_state==MatchState::title) banner="PRESS START";
+    else if (state.match_state==MatchState::countdown) {
+        const auto count=std::clamp((state.frames_remaining+23)/24,1,5);
+        countdown_text[0]=static_cast<char>('0'+count);
+        banner=std::string_view(countdown_text.data(),1U);
+    } else if (state.match_state==MatchState::paused) banner="PAUSED";
     else if (state.match_state==MatchState::result_banner) {
         banner=state.health>0 ? "SUCCESS" : "FAILED";
         color=state.health>0 ? 0xE040FF40U : 0xE0FF4040U;

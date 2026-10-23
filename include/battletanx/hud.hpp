@@ -37,6 +37,7 @@ struct HudState {
     std::int32_t max_health{};
     std::int32_t primary_ammo{};
     std::int32_t score{};
+    std::int32_t frames_remaining{};
     MatchState match_state{MatchState::live};
 };
 

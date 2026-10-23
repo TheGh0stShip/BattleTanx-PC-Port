@@ -100,6 +100,12 @@ int main() {
     battletanx::draw_player_hud(framebuffer,640,480,assets,state);
     CHECK(framebuffer!=before);
 
+    state.match_state=battletanx::MatchState::title;
+    battletanx::draw_player_hud(framebuffer,640,480,assets,state);
+    state.match_state=battletanx::MatchState::countdown;
+    state.frames_remaining=120;
+    battletanx::draw_player_hud(framebuffer,640,480,assets,state);
+
     bool rejected=false;
     try {
         fixture[3U]=22U;

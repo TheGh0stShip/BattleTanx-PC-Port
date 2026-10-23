@@ -122,7 +122,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         battletanx::SessionInput session_input;
         session_input.drive=input;
         session_input.start_pressed=(pad.pressed&0x1000U)!=0U;
-        session_input.advance=true;
+        session_input.advance=(pad.pressed&(0x8000U|0x1000U))!=0U;
         previous=current;
         const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now()-clock_start).count();
@@ -235,6 +235,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         renderer.render(draw,assets);
         battletanx::HudState hud;
         hud.match_state=session.mission().state();
+        hud.frames_remaining=session.mission().frames_remaining();
         hud.score=session.owners()[0].score;
         if (active_player) {
             const auto* player=session.units().get(*active_player);
