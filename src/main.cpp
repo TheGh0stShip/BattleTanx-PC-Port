@@ -40,6 +40,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 
 namespace {
@@ -73,7 +74,24 @@ std::array<std::uint32_t,pickup_model_kind_count> load_pickup_model_slots(
     return slots;
 }
 
-enum class WaveRunResult { quit, retry, advance, complete, selection_previous, selection_next };
+enum class WaveRunResult { exit, title, retry, advance, complete, selection_previous, selection_next };
+
+struct PakProbeResult {
+    battletanx::frontend::PakProbe probe{battletanx::frontend::PakProbe::ok_no_save};
+    std::optional<battletanx::CampaignRecord> record;
+};
+
+PakProbeResult probe_controller_pak(const std::filesystem::path& path) {
+    try {
+        const auto bytes=battletanx::load_controller_pak_record(path);
+        if (!bytes) return {};
+        const auto record=battletanx::parse_campaign_record(*bytes);
+        if (!record) return {.probe=battletanx::frontend::PakProbe::checksum_bad};
+        return {.probe=battletanx::frontend::PakProbe::ok_with_save,.record=*record};
+    } catch (const std::exception&) {
+        return {.probe=battletanx::frontend::PakProbe::damaged};
+    }
+}
 
 battletanx::frontend::MenuInput frontend_input(const battletanx::PlayerInput& input) {
     using namespace battletanx::frontend;
@@ -87,6 +105,64 @@ battletanx::frontend::MenuInput frontend_input(const battletanx::PlayerInput& in
     if ((input.pressed&0x0020U)!=0U) pressed|=buttons::prev_target;
     if ((input.pressed&0x0010U)!=0U) pressed|=buttons::next_target;
     return {.pressed=pressed,.raw_pressed=input.pressed};
+}
+
+std::optional<battletanx::CampaignRecord> run_campaign_frontend(
+    battletanx::Platform& platform,const battletanx::HudAssets& hud_assets,
+    const battletanx::SoundBank& sounds,const std::filesystem::path& pak_path,
+    const PakProbeResult& initial_pak) {
+    platform.set_sound_bank(sounds);
+    auto state=battletanx::frontend::make_frontend_state();
+    const auto* loaded=initial_pak.record ? &*initial_pak.record : nullptr;
+    static_cast<void>(battletanx::frontend::apply_pak_probe(
+        state,initial_pak.probe,loaded));
+    std::array<battletanx::ControllerPad,4> previous{};
+    std::array<battletanx::ControllerPad,4> current{};
+    std::vector<std::uint32_t> framebuffer(
+        static_cast<std::size_t>(battletanx::native_width)*
+        static_cast<std::size_t>(battletanx::native_height));
+    while (platform.pump(current)) {
+        const auto pad=battletanx::translate_player_input(current[0],previous[0]);
+        previous=current;
+        const auto step=battletanx::frontend::update_frontend(state,frontend_input(pad));
+        for (const auto& command:step.commands) {
+            using battletanx::frontend::CommandKind;
+            switch (command.kind) {
+            case CommandKind::write_campaign_record:
+                battletanx::write_controller_pak_record(
+                    pak_path,battletanx::serialize_campaign_record(state.record));
+                state.record_loaded=true;
+                state.save_enabled=true;
+                break;
+            case CommandKind::repair_pak: {
+                std::error_code error;
+                std::filesystem::remove(pak_path,error);
+                if (error) throw std::runtime_error(
+                    "failed to replace damaged Controller Pak image: "+error.message());
+                battletanx::write_controller_pak_record(
+                    pak_path,battletanx::serialize_campaign_record(
+                        battletanx::default_campaign_record()));
+                break;
+            }
+            case CommandKind::repoll_pak: {
+                const auto refreshed=probe_controller_pak(pak_path);
+                const auto* refreshed_record=refreshed.record ? &*refreshed.record : nullptr;
+                static_cast<void>(battletanx::frontend::apply_pak_probe(
+                    state,refreshed.probe,refreshed_record));
+                break;
+            }
+            case CommandKind::start_mission:
+                return state.record;
+            default:
+                break;
+            }
+        }
+        battletanx::draw_frontend_menu(framebuffer,battletanx::native_width,
+            battletanx::native_height,hud_assets,
+            battletanx::frontend::make_menu_view(state));
+        platform.present(framebuffer,battletanx::native_width,battletanx::native_height);
+    }
+    return std::nullopt;
 }
 
 void apply_flow_state_to_record(battletanx::CampaignRecord& record,
@@ -127,6 +203,24 @@ void launch_flow_battle(battletanx::campaign_flow::CampaignFlow& flow) {
     }
     if (flow.phase()!=FlowPhase::battle)
         throw std::runtime_error("campaign flow is not ready for battle");
+}
+
+const battletanx::CampaignWaveDefinition* resume_campaign(
+    battletanx::campaign_flow::CampaignFlow& flow,
+    const battletanx::CampaignRecord& record) {
+    flow=battletanx::campaign_flow::CampaignFlow{};
+    battletanx::campaign_flow::FlowCommand resume;
+    resume.kind=battletanx::campaign_flow::FlowCommandKind::resume;
+    resume.record=record;
+    const auto transitions=flow.apply(resume);
+    if (transitions.empty() || flow.current_wave()==nullptr)
+        throw std::runtime_error("Controller Pak campaign is complete or has an unknown mission");
+    battletanx::campaign_flow::FlowCommand options;
+    options.kind=battletanx::campaign_flow::FlowCommandKind::set_options;
+    options.options=battletanx::campaign_flow::options_from_record(record);
+    static_cast<void>(flow.apply(options));
+    launch_flow_battle(flow);
+    return flow.current_wave();
 }
 
 std::string roster_summary(const battletanx::ControllerRoster& roster) {
@@ -383,7 +477,7 @@ WaveRunResult run_platform_diagnostic(battletanx::Platform& platform,
                 resolved_result=WaveRunResult::complete;
                 break;
             case FlowTransitionKind::return_to_menu:
-                resolved_result=WaveRunResult::quit;
+                resolved_result=WaveRunResult::title;
                 break;
             case FlowTransitionKind::rejected:
                 throw std::runtime_error("campaign flow rejected a host transition");
@@ -743,7 +837,7 @@ WaveRunResult run_platform_diagnostic(battletanx::Platform& platform,
                 throw std::runtime_error("native smoke run did not fire the primary weapon");
             std::cout << "Native smoke run passed: " << game_tick << " ticks, checksum "
                       << session.checksum() << '\n';
-            return WaveRunResult::quit;
+            return WaveRunResult::exit;
         }
         const auto next_tick_nanoseconds=static_cast<std::int64_t>(
             ((game_tick+1U)*UINT64_C(1000000000)+ticks_per_second-1U)/ticks_per_second);
@@ -752,7 +846,7 @@ WaveRunResult run_platform_diagnostic(battletanx::Platform& platform,
                 clock_start+std::chrono::nanoseconds(next_tick_nanoseconds));
         }
     }
-    return WaveRunResult::quit;
+    return WaveRunResult::exit;
 }
 } // namespace
 
@@ -788,28 +882,12 @@ int main(int argc, char** argv) {
             return 2;
         }
         const auto pak_path=battletanx::Platform::controller_pak_path();
-        auto pak=battletanx::load_controller_pak_record(pak_path);
-        if (!pak) {
-            battletanx::write_controller_pak_record(
-                pak_path,battletanx::serialize_campaign_record(
-                    battletanx::default_campaign_record()));
-            pak=battletanx::load_controller_pak_record(pak_path);
+        const auto initial_pak=probe_controller_pak(pak_path);
+        auto campaign=initial_pak.record.value_or(battletanx::default_campaign_record());
+        if (initial_pak.record) {
+            std::cout << "Mounted verified Controller Pak image at "
+                      << pak_path.string() << '\n';
         }
-        if (!pak) throw std::runtime_error("failed to mount virtual Controller Pak");
-        auto campaign=battletanx::parse_campaign_record(*pak);
-        if (!campaign) throw std::runtime_error("Controller Pak campaign record is invalid");
-        battletanx::campaign_flow::CampaignFlow campaign_flow;
-        battletanx::campaign_flow::FlowCommand resume;
-        resume.kind=battletanx::campaign_flow::FlowCommandKind::resume;
-        resume.record=*campaign;
-        const auto resume_transitions=campaign_flow.apply(resume);
-        if (resume_transitions.empty() || campaign_flow.current_wave()==nullptr)
-            throw std::runtime_error("Controller Pak campaign is complete or has an unknown mission");
-        launch_flow_battle(campaign_flow);
-        const auto* wave=campaign_flow.current_wave();
-        battletanx::campaign_save::SaveTransaction save_transaction(*campaign);
-        std::cout << "Mounted verified Controller Pak image at "
-                  << pak_path.string() << '\n';
         const auto rom=battletanx::Rom::load_verified(rom_path);
         settings.remember_rom(rom_path);
         settings.save(settings_path);
@@ -832,20 +910,6 @@ int main(int argc, char** argv) {
         const auto angles=battletanx::AngleTable::from_big_endian(
             rom.bytes().subspan(angle_table_offset,angle_table_size));
         auto bindings=battletanx::load_default_input_bindings(rom);
-        const bool saved_bindings=std::any_of(
-            campaign->bindings.begin(),campaign->bindings.end(),
-            [](std::uint32_t word) { return word!=0U; });
-        if (saved_bindings) {
-            bindings.words=campaign->bindings;
-        } else {
-            campaign->bindings=bindings.words;
-            battletanx::write_controller_pak_record(
-                pak_path,battletanx::serialize_campaign_record(*campaign));
-        }
-        battletanx::campaign_flow::FlowCommand saved_options;
-        saved_options.kind=battletanx::campaign_flow::FlowCommandKind::set_options;
-        saved_options.options=battletanx::campaign_flow::options_from_record(*campaign);
-        static_cast<void>(campaign_flow.apply(saved_options));
         if (std::abs(angles.sine(0x4000U)-1.0F)>0.0001F ||
             std::abs(angles.cosine(0U)-1.0F)>0.0001F) {
             throw std::runtime_error("retail angle table failed cardinal-direction validation");
@@ -860,6 +924,21 @@ int main(int argc, char** argv) {
             battletanx::controller_roster_count*battletanx::controller_roster_size);
         auto platform=show_window ?
             battletanx::Platform::create("BattleTanx native source port",settings) : nullptr;
+        if (platform && smoke_ticks==0U) {
+            const auto selected=run_campaign_frontend(
+                *platform,battletanx::load_hud_assets(rom),sounds,pak_path,initial_pak);
+            if (!selected) return 0;
+            campaign=*selected;
+        }
+        const bool saved_bindings=std::any_of(
+            campaign.bindings.begin(),campaign.bindings.end(),
+            [](std::uint32_t word) { return word!=0U; });
+        if (saved_bindings) bindings.words=campaign.bindings;
+        else campaign.bindings=bindings.words;
+
+        battletanx::campaign_flow::CampaignFlow campaign_flow;
+        const auto* wave=resume_campaign(campaign_flow,campaign);
+        battletanx::campaign_save::SaveTransaction save_transaction(campaign);
         for (;;) {
             auto hud_assets=battletanx::load_hud_assets(rom);
             if (wave->world_stream!=1U) hud_assets.level_map.reset();
@@ -934,20 +1013,35 @@ int main(int argc, char** argv) {
                     sounds,*music,hud_assets,briefing_image,briefing_page,
                     pickup_models,turret_models,roster_table,*wave,
                     battletanx::parse_team_spawn_table(*active_world_stream),
-                    *campaign,campaign_flow,save_transaction,settings,pak_path,smoke_ticks);
-            if (result==WaveRunResult::quit) break;
+                    campaign,campaign_flow,save_transaction,settings,pak_path,smoke_ticks);
+            if (result==WaveRunResult::exit) break;
+            if (result==WaveRunResult::title) {
+                platform->set_music_track(*music,0.0F);
+                const auto selected=run_campaign_frontend(
+                    *platform,hud_assets,sounds,pak_path,probe_controller_pak(pak_path));
+                if (!selected) break;
+                campaign=*selected;
+                const bool has_bindings=std::any_of(
+                    campaign.bindings.begin(),campaign.bindings.end(),
+                    [](std::uint32_t word) { return word!=0U; });
+                if (has_bindings) bindings.words=campaign.bindings;
+                else campaign.bindings=bindings.words;
+                wave=resume_campaign(campaign_flow,campaign);
+                save_transaction=battletanx::campaign_save::SaveTransaction(campaign);
+                continue;
+            }
             if (result==WaveRunResult::selection_previous ||
                 result==WaveRunResult::selection_next) {
-                campaign->unit_type=battletanx::cycle_player_bundle(
-                    campaign->unit_type,
+                campaign.unit_type=battletanx::cycle_player_bundle(
+                    campaign.unit_type,
                     result==WaveRunResult::selection_previous ? -1 : 1);
                 battletanx::write_controller_pak_record(
-                    pak_path,battletanx::serialize_campaign_record(*campaign));
+                    pak_path,battletanx::serialize_campaign_record(campaign));
                 battletanx::campaign_flow::FlowCommand options;
                 options.kind=battletanx::campaign_flow::FlowCommandKind::set_options;
-                options.options=battletanx::campaign_flow::options_from_record(*campaign);
+                options.options=battletanx::campaign_flow::options_from_record(campaign);
                 static_cast<void>(campaign_flow.apply(options));
-                std::cout << "Selected campaign lineup " << campaign->unit_type << '\n';
+                std::cout << "Selected campaign lineup " << campaign.unit_type << '\n';
                 continue;
             }
             if (result==WaveRunResult::retry) {

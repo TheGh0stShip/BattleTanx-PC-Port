@@ -129,6 +129,7 @@ target_sources(battletanx_core PRIVATE
     src/effect_runtime.cpp
     src/frontend_model.cpp
     src/frontend_setup_menus.cpp
+    src/frontend_view.cpp
     src/music_selection.cpp
     src/owner_links.cpp
     src/owner_profiles.cpp
@@ -201,6 +202,7 @@ add_runtime_test(deployables_tests)
 add_runtime_test(effect_runtime_tests)
 add_runtime_test(frontend_model_tests)
 add_runtime_test(frontend_setup_menus_tests)
+add_runtime_test(frontend_view_tests)
 add_runtime_test(music_selection_tests)
 add_runtime_test(objective_world_scenario_tests)
 add_runtime_test(owner_links_tests)

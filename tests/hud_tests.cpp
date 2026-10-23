@@ -133,6 +133,14 @@ int main() {
     battletanx::draw_player_hud(framebuffer,640,480,assets,state);
     CHECK(framebuffer!=result_without_prompt);
 
+    battletanx::frontend::MenuView menu;
+    menu.title="A";
+    menu.rows.push_back({.label="A",.value="A",.selected=true,.enabled=true});
+    std::fill(framebuffer.begin(),framebuffer.end(),0x00101820U);
+    battletanx::draw_frontend_menu(framebuffer,640,480,assets,menu);
+    CHECK(std::count(framebuffer.begin(),framebuffer.end(),0x00101820U)<
+          static_cast<std::ptrdiff_t>(framebuffer.size()));
+
     bool rejected=false;
     try {
         fixture[3U]=22U;

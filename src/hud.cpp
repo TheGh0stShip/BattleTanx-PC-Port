@@ -7,6 +7,7 @@
 #include <charconv>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 
 namespace battletanx {
@@ -438,6 +439,44 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
             retail_text(pixels,width,height,assets.fonts[0],state.result_prompt,
                         (width-prompt_width)/2,y+text_height+24,prompt_scale,0xFFFFFFFFU);
         }
+    }
+}
+
+void draw_frontend_menu(std::span<std::uint32_t> pixels,int width,int height,
+                        const HudAssets& assets,const frontend::MenuView& view) {
+    if (width<=0 || height<=0 || pixels.size()!=
+        static_cast<std::size_t>(width)*static_cast<std::size_t>(height))
+        throw std::invalid_argument("frontend framebuffer dimensions are invalid");
+    std::fill(pixels.begin(),pixels.end(),0x00101820U);
+    if (assets.fonts.empty()) return;
+    const RetailFont& font=assets.fonts[0];
+    constexpr int title_scale=4;
+    constexpr int item_scale=2;
+    const int title_width=retail_text_width(font,view.title,title_scale);
+    retail_text(pixels,width,height,font,view.title,(width-title_width)/2,42,
+                title_scale,0xFFFFC040U);
+    const int row_height=static_cast<int>(font.height)*item_scale+14;
+    int y=132;
+    for (const frontend::MenuRowView& row:view.rows) {
+        const std::uint32_t color=!row.enabled ? 0xFF606060U :
+            row.selected ? 0xFFFFFFFFU : 0xFFB0B0B0U;
+        if (row.selected)
+            rectangle(pixels,width,height,70,y-5,width-140,row_height,0x80404020U);
+        const std::string label=(row.selected ? "> " : "  ")+row.label;
+        retail_text(pixels,width,height,font,label,88,y,item_scale,color);
+        if (!row.value.empty()) {
+            const int value_width=retail_text_width(font,row.value,item_scale);
+            retail_text(pixels,width,height,font,row.value,width-88-value_width,y,
+                        item_scale,color);
+        }
+        y+=row_height;
+    }
+    if (!view.footer.empty()) {
+        constexpr int footer_scale=1;
+        const int footer_width=retail_text_width(font,view.footer,footer_scale);
+        retail_text(pixels,width,height,font,view.footer,
+                    std::max(8,(width-footer_width)/2),height-36,
+                    footer_scale,0xFF808080U);
     }
 }
 

@@ -79,8 +79,9 @@ in distribution packages.
 
 ## Controls
 
-Press **Start** or **Enter** to begin. The default retail control preset keeps
-the turret aligned with the hull.
+Use the D-pad and **A** (or the arrow keys and **X/Enter**) to navigate the
+title, campaign setup, options, lineup, and controller-binding screens. The
+default retail control preset keeps the turret aligned with the hull.
 
 | Action | Keyboard | Controller |
 |---|---|---|
@@ -175,17 +176,18 @@ Configure with `-DBATTLETANX_PORTABLE=ON` to include `portable.txt` and add a
 
 ## Project status
 
-The current build launches the campaign wave selected by the original save,
-loads its retail world and population data, and runs native battles with all
-three vehicle rosters, enemies, weapons, pickups, turrets, queen objectives,
-HUD, audio, mission results, respawning, Controller Pak progress updates, wave
-retry, retail mission briefing art and objective/result messages, and
-in-process progression to the next mission. The briefing screen supports
-controller or keyboard D-pad lineup selection and saves it to the Controller Pak.
+The current build presents the recovered title and campaign setup flow,
+including new/load game, difficulty, lineup, options, controller bindings, and
+Controller Pak decisions. It then loads the selected campaign wave and its
+retail world and population data, and runs native battles with all three
+vehicle rosters, enemies, weapons, pickups, turrets, queen objectives, HUD,
+audio, pause and mission-result menus, respawning, Controller Pak progress
+updates, wave retry, retail mission briefing art and objective/result messages,
+and in-process progression to the next mission.
 
 Work still in progress includes:
 
-- Remaining front-end menus and chapter intermissions
+- Chapter intermissions and unsupported multiplayer/credits/input-code choices
 - Remaining objective presentation and uncommon queen/base interactions
 - Remaining scripted enemy behaviors, weapons, effects, and pickup cases
 - Complete music selection and uncommon material/rendering modes

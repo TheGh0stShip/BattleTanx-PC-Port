@@ -1,5 +1,6 @@
 #pragma once
 
+#include "battletanx/frontend_view.hpp"
 #include "battletanx/mission_state.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/texture.hpp"
@@ -69,5 +70,7 @@ struct HudState {
 [[nodiscard]] HudMapPosition level_one_hud_map_position(float x,float z) noexcept;
 void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
                      const HudAssets& assets,const HudState& state);
+void draw_frontend_menu(std::span<std::uint32_t> pixels,int width,int height,
+                        const HudAssets& assets,const frontend::MenuView& view);
 
 } // namespace battletanx

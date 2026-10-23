@@ -5,7 +5,9 @@ campaign frontend as data: a `FrontendState`, edge-triggered `MenuInput` bits,
 `TransitionCommand`s for the host to act on, and `DrawCommand`s that name items
 and values by identifier only. No layout, image, or retail text is reproduced.
 
-Status: uncompiled and untested.
+Status: compiled and covered by the frontend model, setup-menu, presenter, and
+HUD test suites. The Linux and Windows hosts consume the same platform-neutral
+state and command model.
 
 ## Screens
 
