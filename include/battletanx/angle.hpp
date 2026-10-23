@@ -10,7 +10,7 @@ class AngleTable {
   public:
     static constexpr std::size_t value_count=257U;
 
-    explicit AngleTable(std::array<float,value_count> values) : values_(values) {}
+    explicit AngleTable(const std::array<float,value_count>& values) : values_(values) {}
     static AngleTable from_big_endian(std::span<const std::uint8_t> bytes);
 
     [[nodiscard]] float sine(std::uint32_t angle) const noexcept;
