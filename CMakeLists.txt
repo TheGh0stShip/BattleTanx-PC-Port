@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(BattleTanxPC LANGUAGES C CXX)
+project(BattleTanxPC VERSION 0.1.0 LANGUAGES C CXX)
 
 include(FetchContent)
 
@@ -131,3 +131,28 @@ add_runtime_test(battle_session_tests)
 add_runtime_test(spawner_tests)
 add_runtime_test(pickup_tests)
 add_runtime_test(hud_tests)
+
+# Keep binary distributions self-contained and free of retail game data. SDL is
+# linked statically above, so the installed runtime consists of the native host
+# executable and its build/run documentation.
+install(TARGETS BattleTanx
+    RUNTIME DESTINATION .
+    COMPONENT Runtime)
+install(FILES README.md
+    DESTINATION .
+    COMPONENT Runtime)
+
+if(WIN32)
+    set(CPACK_GENERATOR ZIP)
+    set(BATTLETANX_PACKAGE_PLATFORM "Windows-x64")
+else()
+    set(CPACK_GENERATOR TGZ)
+    set(BATTLETANX_PACKAGE_PLATFORM "Linux-${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
+set(CPACK_COMPONENTS_ALL Runtime)
+set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
+set(CPACK_PACKAGE_FILE_NAME
+    "BattleTanx-PC-${PROJECT_VERSION}-${BATTLETANX_PACKAGE_PLATFORM}")
+set(CPACK_PACKAGE_CHECKSUM SHA256)
+include(CPack)

@@ -39,6 +39,39 @@ ctest --test-dir build --output-on-failure
 ./build/BattleTanx.exe --window C:\Games\BattleTanx.z64
 ```
 
+## Install and portable packages
+
+The executable has no bundled game data. Keep your legally obtained ROM
+outside the source tree and pass its path when launching the game.
+
+Install a locally built executable and this README into a directory of your
+choice:
+
+```sh
+cmake --install build --prefix ./BattleTanx-PC
+./BattleTanx-PC/BattleTanx --window /absolute/path/to/BattleTanx.z64
+```
+
+With a Visual Studio multi-configuration build on Windows, select the release
+configuration explicitly:
+
+```powershell
+cmake --install build --config Release --prefix .\BattleTanx-PC
+.\BattleTanx-PC\BattleTanx.exe --window C:\Games\BattleTanx.z64
+```
+
+To create the same ROM-free archive produced by continuous integration, run:
+
+```sh
+cmake --build build --target package --parallel
+```
+
+Linux packages are `.tar.gz` archives and Windows packages are `.zip`
+archives. A SHA-256 sidecar is generated beside each archive. Extract the
+archive anywhere, then launch `BattleTanx` (`BattleTanx.exe` on Windows) with
+the ROM path. Official build artifacts are available from successful workflow
+runs; they intentionally contain neither a ROM nor extracted retail assets.
+
 The current executable implements the portable build and ROM-loading boundary.
 It validates the complete ROM, decompresses all 21 audited retail resource
 bundles, and validates their offset tables before exposing entries to the

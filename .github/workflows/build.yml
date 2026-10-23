@@ -15,6 +15,16 @@ jobs:
         run: cmake --build build --parallel
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Package
+        run: cmake --build build --target package --parallel
+      - name: Upload Linux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: BattleTanx-PC-Linux-x64
+          path: |
+            build/BattleTanx-PC-*.tar.gz
+            build/BattleTanx-PC-*.tar.gz.sha256
+          if-no-files-found: error
 
   windows:
     runs-on: windows-latest
@@ -26,4 +36,14 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Package
+        run: cmake --build build --config Release --target package --parallel
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: BattleTanx-PC-Windows-x64
+          path: |
+            build/BattleTanx-PC-*.zip
+            build/BattleTanx-PC-*.zip.sha256
+          if-no-files-found: error
 
