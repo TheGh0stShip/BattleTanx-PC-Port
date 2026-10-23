@@ -27,11 +27,30 @@
 #include <thread>
 
 namespace {
+constexpr std::size_t pickup_model_kind_count=23U;
+
+std::array<std::uint32_t,pickup_model_kind_count> load_pickup_model_slots(
+    const battletanx::Rom& rom) {
+    constexpr std::size_t table_offset=0xB5CE0U;
+    const auto bytes=rom.bytes().subspan(table_offset,pickup_model_kind_count*4U);
+    std::array<std::uint32_t,pickup_model_kind_count> slots{};
+    for (std::size_t index=0U; index<slots.size(); ++index) {
+        const std::size_t offset=index*4U;
+        slots[index]=static_cast<std::uint32_t>(bytes[offset])<<24U |
+                     static_cast<std::uint32_t>(bytes[offset+1U])<<16U |
+                     static_cast<std::uint32_t>(bytes[offset+2U])<<8U |
+                     static_cast<std::uint32_t>(bytes[offset+3U]);
+        if (slots[index]>=182U) throw std::runtime_error("pickup model slot is invalid");
+    }
+    return slots;
+}
+
 void run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::NavigationLevel& navigation,
                              const battletanx::AngleTable& angles,
                              const battletanx::InputBindings& bindings,
                              const battletanx::ModelAssets& assets,
+                             const std::array<std::uint32_t,pickup_model_kind_count>& pickup_models,
                              battletanx::CampaignRecord campaign,
                              const std::filesystem::path& pak_path) {
     auto platform=battletanx::Platform::create("BattleTanx native source port");
@@ -187,6 +206,17 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                 battletanx::yaw_translation_matrix(
                     shell.heading,shell.x,shell.y,shell.z,angles),3U,0});
         });
+        const auto pickup_angle=static_cast<std::uint16_t>(game_tick*0x600U);
+        for (const auto& pickup:session.pickups()) {
+            if (!pickup.active || pickup.removed || pickup.kind>=pickup_models.size()) continue;
+            const std::uint32_t set=assets.set_base()+pickup_models[pickup.kind];
+            if (set>=assets.sets().size() || assets.set(set).lod_count==0U) continue;
+            const auto pickup_ground=terrain.sample(pickup.x,pickup.z);
+            const float pickup_y=pickup_ground ? pickup_ground->height : 0.0F;
+            draw.items.push_back({set,
+                battletanx::yaw_translation_matrix(
+                    pickup_angle,pickup.x,pickup_y,pickup.z,angles),3U,0});
+        }
         renderer.render(draw,assets);
         if (!verified_native_frame) {
             const auto pixels=renderer.pixels();
@@ -295,6 +325,7 @@ int main(int argc, char** argv) {
                   << " level-local model geometry references: " << model_audit.vertices
                   << " vertices, " << model_audit.triangles << " triangles\n";
         const auto preview_assets=battletanx::ModelAssets::load(rom,*preview_world);
+        const auto pickup_models=load_pickup_model_slots(rom);
         for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x52U}) {
             if (preview_assets.set_base()+slot>=preview_assets.sets().size() ||
                 preview_assets.set(preview_assets.set_base()+slot).lod_count==0U) {
@@ -308,7 +339,7 @@ int main(int argc, char** argv) {
         if (show_window) {
             run_platform_diagnostic(
                 *preview_world,*preview_navigation,angles,bindings,preview_assets,
-                *campaign,pak_path);
+                pickup_models,*campaign,pak_path);
         }
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';
