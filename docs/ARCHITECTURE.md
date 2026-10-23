@@ -16,6 +16,19 @@ physical addresses. Recovered functions move into the portable game layer only
 after their types, address use, serialized-data access, and platform
 dependencies have been reviewed.
 
+## Native-only gate
+
+The PC executable is a source port, not an emulator. Its build rejects assembly,
+generated translation sources, CPU-recompilation inputs, N64 instruction
+interpreters, compatibility runtimes, and N64 renderer emulation dependencies.
+The core currently has no linked runtime dependencies, and the executable links
+only that reviewed core. Future window, audio, input, and graphics dependencies
+must be native host service libraries and must be reviewed at the build gate.
+
+The user-supplied ROM is a read-only data container. Loading endian-sensitive
+tables, compressed resources, models, textures, audio, or level data from it
+does not execute cartridge code.
+
 ## Data boundary
 
 - ROM and extracted-resource fields are explicitly sized and big-endian.

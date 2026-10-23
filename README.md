@@ -57,6 +57,12 @@ Recovered gameplay behavior will enter the portable target in reviewed slices.
 The matching N64 project remains a separate regression oracle and is not a PC
 build configuration.
 
+This project does not emulate the N64. The executable contains native source
+implementations of recovered behavior and native platform services. It does
+not contain a MIPS interpreter or translator, RSP/RDP emulation, generated CPU
+translation, libultra compatibility runtime, or emulated N64 address space.
+The verified ROM is opened strictly as a read-only source of retail game data.
+
 ## License
 
 Project source is licensed under GPL-3.0-or-later. BattleTanx and its game data

@@ -29,6 +29,30 @@ target_compile_options(battletanx_core PRIVATE
 add_executable(BattleTanx src/main.cpp)
 target_link_libraries(BattleTanx PRIVATE battletanx_core)
 
+function(require_native_source_target target)
+    get_target_property(target_sources ${target} SOURCES)
+    foreach(source IN LISTS target_sources)
+        if(source MATCHES "(recomp|emulat|mips|rsp|rdp|libultra|ultramodern|rt64|generated)" OR
+           source MATCHES "\\.(s|asm)$")
+            message(FATAL_ERROR "${target} contains a non-native source-port input: ${source}")
+        endif()
+    endforeach()
+endfunction()
+
+require_native_source_target(battletanx_core)
+require_native_source_target(BattleTanx)
+
+get_target_property(core_dependencies battletanx_core LINK_LIBRARIES)
+if(core_dependencies)
+    message(FATAL_ERROR
+        "battletanx_core gained a runtime dependency; review it as a native host library")
+endif()
+get_target_property(game_dependencies BattleTanx LINK_LIBRARIES)
+if(NOT game_dependencies STREQUAL "battletanx_core")
+    message(FATAL_ERROR
+        "BattleTanx must link only the reviewed native source-port core")
+endif()
+
 enable_testing()
 add_executable(battletanx_tests tests/core_tests.cpp)
 target_link_libraries(battletanx_tests PRIVATE battletanx_core)
