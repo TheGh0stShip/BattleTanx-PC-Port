@@ -308,11 +308,14 @@ RUNTIME_TEST(replan_budget_round_robin_one_unit_per_tick) {
     alive.fill(true);
     consumes.fill(true);
     alive[1]=false;
-    REQUIRE(scheduler.run_tick(alive,consumes)==std::optional<std::uint8_t>{0U});
+    REQUIRE(scheduler.run_tick(alive,consumes)==
+            std::optional<std::uint8_t>{std::uint8_t{0U}});
     REQUIRE(scheduler.cursor==2U); // dead slot 1 skipped in the same pass
-    REQUIRE(scheduler.run_tick(alive,consumes)==std::optional<std::uint8_t>{2U});
+    REQUIRE(scheduler.run_tick(alive,consumes)==
+            std::optional<std::uint8_t>{std::uint8_t{2U}});
     consumes[3]=false; // slot 3 does not route, so the budget passes to 4
-    REQUIRE(scheduler.run_tick(alive,consumes)==std::optional<std::uint8_t>{4U});
+    REQUIRE(scheduler.run_tick(alive,consumes)==
+            std::optional<std::uint8_t>{std::uint8_t{4U}});
     REQUIRE(scheduler.cursor==5U);
     REQUIRE(!scheduler.run_tick(alive,consumes,false).has_value());
     REQUIRE(scheduler.cursor==5U);

@@ -1,6 +1,8 @@
 #include "battletanx/pickup_effects.hpp"
 #include "runtime_test_support.hpp"
 
+#include <array>
+
 using namespace battletanx;
 
 namespace {
@@ -127,7 +129,8 @@ RUNTIME_TEST(announce_adds_progress_and_event) {
 }
 
 RUNTIME_TEST(unknown_kinds_are_reported) {
-    for (const std::uint8_t kind : {6U,17U,20U,21U,22U,40U,255U}) {
+    constexpr std::array<std::uint8_t,7> unknown{6U,17U,20U,21U,22U,40U,255U};
+    for (const std::uint8_t kind : unknown) {
         Setup s;
         const UnitRecord before=s.unit;
         const PickupEffectResult r=s.apply(kind);
