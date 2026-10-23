@@ -28,6 +28,9 @@ struct DrawList {
 std::size_t select_model_lod(std::uint8_t lod_count,float distance_squared) noexcept;
 std::int8_t decode_world_animation_phase(std::uint8_t kind) noexcept;
 std::uint32_t alpha_blend(std::uint32_t source,std::uint32_t destination) noexcept;
+// The edge function and top-left viewport convention produce a positive
+// signed area for the retail assets' front faces.
+[[nodiscard]] bool retail_front_face(float signed_screen_area) noexcept;
 std::size_t clipped_view_volume_vertex_count(
     const std::array<std::array<float,4>,3>& triangle) noexcept;
 

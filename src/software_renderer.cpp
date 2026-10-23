@@ -189,7 +189,7 @@ void rasterize_triangle(int width,int height,std::vector<std::uint32_t>& color,
                            vertices[1].x,vertices[1].y,
                            vertices[2].x,vertices[2].y);
     if (std::abs(area)<=0.000001F ||
-        (material.cull==CullMode::back && area>0.0F)) return;
+        (material.cull==CullMode::back && !retail_front_face(area))) return;
     const int minimum_x=std::max(0,static_cast<int>(std::floor(std::min(
         {vertices[0].x,vertices[1].x,vertices[2].x}))));
     const int maximum_x=std::min(width-1,static_cast<int>(std::ceil(std::max(
@@ -264,6 +264,10 @@ std::int8_t decode_world_animation_phase(std::uint8_t kind) noexcept {
 
 std::uint32_t alpha_blend(std::uint32_t source,std::uint32_t destination) noexcept {
     return blend_source_over(source,destination);
+}
+
+bool retail_front_face(float signed_screen_area) noexcept {
+    return signed_screen_area>0.0F;
 }
 
 std::size_t clipped_view_volume_vertex_count(

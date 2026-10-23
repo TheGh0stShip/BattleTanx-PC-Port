@@ -107,6 +107,8 @@ int main() {
     CHECK(battletanx::decode_world_animation_phase(0xAEU)==-2);
     CHECK(battletanx::decode_world_animation_phase(0xFFU)==-1);
     CHECK(battletanx::alpha_blend(0x80FF0000U,0x000000FFU)==0x0080007FU);
+    CHECK(battletanx::retail_front_face(1.0F));
+    CHECK(!battletanx::retail_front_face(-1.0F));
     CHECK(battletanx::clipped_view_volume_vertex_count(
         {{{0.0F,0.0F,0.0F,1.0F},{0.5F,0.0F,0.0F,1.0F},
           {0.0F,0.5F,0.0F,1.0F}}})==3U);
