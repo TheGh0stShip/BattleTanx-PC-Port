@@ -26,5 +26,8 @@ struct CameraPose {
 CameraPose build_flat_tank_camera(const PlayerTank& tank,const AngleTable& angles);
 CameraPose build_tank_camera(const PlayerTank& tank,const AngleTable& angles,
                              const std::array<float,3>& ground_normal);
+CameraPose build_tank_camera(const PlayerTank& tank,const AngleTable& angles,
+                             const std::array<float,3>& ground_normal,
+                             const WorldLevel& world);
 
 } // namespace battletanx

@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 
 namespace battletanx {
 
@@ -38,6 +39,9 @@ bool oriented_rects_overlap(const OrientedRect& first,const OrientedRect& second
                             const AngleTable& angles);
 bool segment_intersects_oriented_rect(PlanarPoint begin,PlanarPoint end,
                                       const OrientedRect& rect,const AngleTable& angles);
+std::optional<float> segment_oriented_rect_hit_fraction(
+    PlanarPoint begin,PlanarPoint end,const OrientedRect& rect,
+    const AngleTable& angles) noexcept;
 
 } // namespace battletanx
 

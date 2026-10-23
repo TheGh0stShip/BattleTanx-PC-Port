@@ -68,7 +68,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         draw.animation_tick=game_tick;
         const std::array<float,3> ground_normal=terrain_sample ? terrain_sample->normal :
             std::array<float,3>{0.0F,1.0F,0.0F};
-        const auto camera=battletanx::build_tank_camera(tank,angles,ground_normal);
+        const auto camera=battletanx::build_tank_camera(
+            tank,angles,ground_normal,world);
         draw.eye=camera.eye;
         draw.view=battletanx::look_at_matrix(camera.eye,camera.target,camera.up);
         draw.projection=battletanx::perspective_matrix(

@@ -416,6 +416,21 @@ int main() {
         CHECK(std::abs(tilted_camera.up.x)<0.00001F);
         CHECK(std::abs(tilted_camera.up.y-0.7071067F)<0.0001F);
         CHECK(std::abs(tilted_camera.up.z-0.7071067F)<0.0001F);
+        battletanx::WorldLevel camera_world;
+        battletanx::WorldItem camera_wall;
+        camera_wall.type=1;
+        camera_wall.shape=0;
+        camera_wall.z=-200.0F;
+        camera_world.items.push_back(camera_wall);
+        battletanx::WorldShape camera_wall_shape;
+        camera_wall_shape.min_x=-10;
+        camera_wall_shape.max_x=10;
+        camera_wall_shape.min_z=-10;
+        camera_wall_shape.max_z=10;
+        camera_world.shapes.push_back(camera_wall_shape);
+        const auto clamped_camera=battletanx::build_tank_camera(
+            camera_tank,angles,{0.0F,1.0F,0.0F},camera_world);
+        CHECK(clamped_camera.eye.z>camera.eye.z);
 
         const battletanx::RotatedRect axis_aligned{20,10,-2,2,-1,1,0};
         std::array<battletanx::PlanarPoint,4> corners{};
@@ -458,6 +473,9 @@ int main() {
             {-3.0F,0.0F},{3.0F,0.0F},overlap_a,angles));
         CHECK(!battletanx::segment_intersects_oriented_rect(
             {-3.0F,4.0F},{3.0F,4.0F},overlap_a,angles));
+        const auto hit_fraction=battletanx::segment_oriented_rect_hit_fraction(
+            {-3.0F,0.0F},{3.0F,0.0F},overlap_a,angles);
+        CHECK(hit_fraction && std::abs(*hit_fraction-(1.0F/6.0F))<0.00001F);
 
         battletanx::NavigationLevel drive_nav;
         drive_nav.vertices={{},{-1000.0F,-1000.0F},{-1000.0F,1000.0F},
