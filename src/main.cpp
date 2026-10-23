@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <thread>
 
@@ -75,6 +76,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::HudAssets& hud_assets,
                              const std::array<std::uint32_t,pickup_model_kind_count>& pickup_models,
                              const std::array<std::uint32_t,battletanx::turret_types>& turret_models,
+                             std::span<const std::uint8_t> roster_table,
                              const battletanx::CampaignWaveDefinition& wave,
                              std::optional<battletanx::TeamSpawnTable> team_spawns,
                              battletanx::CampaignRecord campaign,
@@ -104,10 +106,12 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
         setup.computer=owner!=0U;
         setup.team=static_cast<std::uint8_t>(wave.owners[owner].team);
         setup.difficulty=static_cast<std::uint8_t>(campaign.difficulty);
-        const auto kind=static_cast<std::uint8_t>(owner==0U ? launch.player_unit_kind
-                                                            : wave.owners[owner].unit_kind);
-        setup.lineup.fill(kind);
-        setup.lineup_count=static_cast<std::uint8_t>(setup.lineup.size());
+        const std::int32_t roster_index=owner==0U ? launch.player_unit_kind
+                                                  : wave.owners[owner].unit_kind;
+        const auto roster=battletanx::decode_controller_roster(roster_table,roster_index);
+        if (!roster) throw std::runtime_error("campaign controller roster is invalid");
+        setup.lineup=roster->kinds;
+        setup.lineup_count=roster->count;
         setup.lives=std::max(1,wave.owners[owner].reserve);
     }
     constexpr std::uint32_t session_seed=0x42545831U;
@@ -526,6 +530,9 @@ int main(int argc, char** argv) {
         const auto sounds=battletanx::load_sound_effect_bank(rom);
         const auto pickup_models=load_pickup_model_slots(rom);
         const auto turret_models=load_turret_model_slots(rom);
+        const auto roster_table=rom.bytes().subspan(
+            battletanx::controller_roster_rom_offset,
+            battletanx::controller_roster_count*battletanx::controller_roster_size);
         for (;;) {
             auto hud_assets=battletanx::load_hud_assets(rom);
             if (wave->world_stream!=1U) hud_assets.level_map.reset();
@@ -589,7 +596,7 @@ int main(int argc, char** argv) {
             if (!show_window) break;
             const auto result=run_platform_diagnostic(
                     *active_world,*active_navigation,angles,bindings,active_assets,
-                    sounds,*music,hud_assets,pickup_models,turret_models,*wave,
+                    sounds,*music,hud_assets,pickup_models,turret_models,roster_table,*wave,
                     battletanx::parse_team_spawn_table(*active_world_stream),
                     *campaign,settings,pak_path);
             if (result==WaveRunResult::quit) break;

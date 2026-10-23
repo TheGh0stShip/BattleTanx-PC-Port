@@ -183,6 +183,30 @@ void write_point(StateWriter& writer,float x,float z,std::uint16_t heading) {
 
 } // namespace
 
+std::optional<ControllerRoster> decode_controller_roster(
+    std::span<const std::uint8_t> table,std::int32_t index) noexcept {
+    if (index<0 || index>=static_cast<std::int32_t>(controller_roster_count) ||
+        table.size()<controller_roster_count*controller_roster_size) return std::nullopt;
+    const std::size_t start=static_cast<std::size_t>(index)*controller_roster_size;
+    ControllerRoster roster;
+    roster.count=table[start];
+    if (roster.count==0U || roster.count>roster.kinds.size()) return std::nullopt;
+    const auto word=[&](std::size_t offset) {
+        return static_cast<std::uint32_t>(table[start+offset])<<24U |
+            static_cast<std::uint32_t>(table[start+offset+1U])<<16U |
+            static_cast<std::uint32_t>(table[start+offset+2U])<<8U |
+            table[start+offset+3U];
+    };
+    for (std::size_t slot=0U; slot<roster.kinds.size(); ++slot) {
+        const std::uint32_t kind=word(4U+slot*4U);
+        if (kind>2U) return std::nullopt;
+        roster.kinds[slot]=static_cast<std::uint8_t>(kind);
+    }
+    roster.initial_event=static_cast<std::int32_t>(word(0x40U));
+    roster.secondary_event=static_cast<std::int32_t>(word(0x44U));
+    return roster;
+}
+
 std::optional<TeamSpawnTable> parse_team_spawn_table(std::span<const std::uint8_t> world_stream) {
     constexpr std::size_t entry_size=12U;
     if (world_stream.size()<4U) return std::nullopt;

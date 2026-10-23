@@ -39,7 +39,7 @@ std::vector<std::uint8_t> hud_fixture() {
 
 std::vector<std::uint8_t> font_fixture() {
     constexpr std::size_t entry=8U;
-    constexpr std::size_t image_offset=156U;
+    constexpr std::size_t image_offset=160U;
     std::vector<std::uint8_t> bytes(entry+image_offset+4U,0U);
     write_be32(bytes,0U,1U);
     write_be32(bytes,4U,static_cast<std::uint32_t>(entry));
@@ -50,6 +50,7 @@ std::vector<std::uint8_t> font_fixture() {
               bytes.begin()+static_cast<std::ptrdiff_t>(entry+152U),
               std::uint8_t{0xFFU});
     bytes[entry+24U+'A']=0U;
+    bytes[entry+24U+'\n']=1U; // retail line-break sentinel, not a glyph record
     bytes[entry+152U]=0U;
     bytes[entry+153U]=0U;
     bytes[entry+154U]=2U;

@@ -272,6 +272,11 @@ std::vector<RetailFont> decode_retail_fonts(std::span<const std::uint8_t> pack) 
             throw std::runtime_error("font metrics are invalid");
         std::copy_n(pack.begin()+static_cast<std::ptrdiff_t>(start+24U),
                     font.glyph_index.size(),font.glyph_index.begin());
+        // Every retail font maps LF to one index past the drawable glyphs.
+        // Text layout consumes the newline before the character renderer, so
+        // that slot is not a TextGlyph record (one font contains atlas bytes
+        // there). Treat it as the same non-drawing sentinel used by 0xFF.
+        font.glyph_index['\n']=0xFFU;
         std::size_t glyph_count{};
         for (const auto index:font.glyph_index)
             if (index!=0xFFU) glyph_count=std::max(glyph_count,static_cast<std::size_t>(index)+1U);

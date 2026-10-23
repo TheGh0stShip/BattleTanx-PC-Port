@@ -64,7 +64,7 @@ struct CampaignRecord {
     std::uint32_t header=0U;       // 0x04, raw; meaning unresolved
     std::uint8_t mission_id=0U;    // 0x08, not range checked (see parse)
     std::int32_t carry=0;          // 0x0C
-    std::int32_t unit_type=0;      // 0x10
+    std::int32_t unit_type=0;      // 0x10: controller-roster selection index
     std::int16_t bonus=0;          // 0x14
     CampaignDifficulty difficulty=CampaignDifficulty::easy; // 0x16
     CampaignFlag powerups;         // 0x17

@@ -37,6 +37,22 @@ inline constexpr std::size_t team_spawn_table_offset=0x18CU;  // world header +0
 inline constexpr std::uint8_t owned_object_entity_kind=0x1BU;
 inline constexpr std::uint8_t marker_lineup_base=10U;         // marker kind >= 10: lineup[kind-10]
 inline constexpr std::int32_t demo_game_kind=8;
+inline constexpr std::size_t controller_roster_count=13U;
+inline constexpr std::size_t controller_roster_size=72U;
+inline constexpr std::size_t controller_roster_rom_offset=0xB62D8U; // D_801262D8
+
+// Retail controller/team record returned by func_800A68C0. Campaign save
+// offset 0x10 and each wave's +0x0C fields select one of these records; they
+// are roster indices, not unit-kind values.
+struct ControllerRoster {
+    std::uint8_t count{};
+    std::array<std::uint8_t,squad_slots> kinds{};
+    std::int32_t initial_event{};       // +0x40, dispatched at unit spawn
+    std::int32_t secondary_event{};     // +0x44
+};
+
+[[nodiscard]] std::optional<ControllerRoster> decode_controller_roster(
+    std::span<const std::uint8_t> table,std::int32_t index) noexcept;
 
 struct TeamSpawnPoint {
     float x{}, z{};

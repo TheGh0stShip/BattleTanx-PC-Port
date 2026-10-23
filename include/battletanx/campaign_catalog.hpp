@@ -84,7 +84,7 @@ struct CampaignSkillProfile {
 };
 
 struct CampaignOwnerSetup {
-    std::int32_t unit_kind=0;     // +0x0C + 4*owner (setup.controller)
+    std::int32_t unit_kind=0;     // +0x0C + 4*owner: controller-roster index
     std::int32_t team=0;          // +0x1D4 + 4*owner
     bool computer_controlled=false; // setup_players mode 1: owner 0 human, others computer-driven
     std::int32_t initial_score=0; // +0x1E4 + 4*owner (record +0x210)
@@ -97,7 +97,7 @@ struct CampaignWaveDefinition {
     std::int32_t game_kind=0;            // +0x000
     std::int32_t mission_id=0;           // +0x004: lookup key and world stream index
     std::int32_t raw_field_08=0;         // +0x008, equals wave_index in retail; UNRESOLVED
-    std::int32_t player_unit_kind=0;     // +0x00C default; replaced by the selection unless kind 7
+    std::int32_t player_unit_kind=0;     // +0x00C roster index; replaced by selection unless kind 7
     bool player_unit_from_selection=false;
     std::uint8_t world_stream=0U;        // = mission_id (play_campaign_wave -> func_80081AD0)
     bool navigation_available=false;     // a navigation stream exists for world_stream
@@ -148,7 +148,7 @@ struct CampaignWaveLaunch {
     std::uint8_t wave_index=0U;
     std::int32_t game_kind=0;
     std::int32_t world_stream=0;
-    std::int32_t player_unit_kind=0;
+    std::int32_t player_unit_kind=0;     // controller-roster index; name kept for API stability
     std::uint8_t skill_group=0U;
     std::uint16_t player_bonus=0U;   // +0x20C after += bonus
     std::int32_t player_score=0;     // +0x1E4 after += carry

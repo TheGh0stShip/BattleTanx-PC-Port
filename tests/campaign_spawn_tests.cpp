@@ -76,6 +76,25 @@ const PlannedUnit* find_unit(const CampaignSpawnPlan& plan,std::uint16_t id) {
 
 } // namespace
 
+RUNTIME_TEST(controller_roster_decodes_save_selection_record) {
+    std::vector<std::uint8_t> bytes(
+        controller_roster_count*controller_roster_size,0U);
+    const std::size_t start=9U*controller_roster_size;
+    bytes[start]=5U;
+    bytes[start+7U]=1U;
+    bytes[start+11U]=2U;
+    bytes[start+0x43U]=22U;
+    bytes[start+0x47U]=23U;
+    const auto roster=decode_controller_roster(bytes,9);
+    REQUIRE(roster.has_value());
+    REQUIRE(roster->count==5U);
+    REQUIRE(roster->kinds[0]==1U && roster->kinds[1]==2U);
+    REQUIRE(roster->initial_event==22 && roster->secondary_event==23);
+    REQUIRE(!decode_controller_roster(bytes,-1).has_value());
+    REQUIRE(!decode_controller_roster(bytes,13).has_value());
+    return true;
+}
+
 RUNTIME_TEST(campaign_single_kind10_marker_is_player_start) {
     const WorldLevel level=level_with({marker(0,10,5.0F,6.0F,7U),marker(1,0,50.0F)});
     RetailRandom rng(1U);
