@@ -58,6 +58,12 @@ int main() {
             return std::abs(actual-expected)<0.000001F;
         };
         if (!near(corners[0].x,9.0F) || !near(corners[0].z,18.0F)) {
+            std::cerr << "axis-aligned input: " << axis_aligned.origin_x << ','
+                      << axis_aligned.origin_z << ' ' << axis_aligned.min_u << ','
+                      << axis_aligned.max_u << ' ' << axis_aligned.min_v << ','
+                      << axis_aligned.max_v << " angle " << axis_aligned.angle
+                      << " sin/cos " << angles.sine(axis_aligned.angle) << ','
+                      << angles.cosine(axis_aligned.angle) << '\n';
             std::cerr << "axis-aligned corners:";
             for (const auto& corner : corners) {
                 std::cerr << " (" << corner.x << ',' << corner.z << ')';
