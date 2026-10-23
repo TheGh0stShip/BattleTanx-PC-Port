@@ -1,6 +1,7 @@
 #include "battletanx/angle.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/controller_pak.hpp"
+#include "battletanx/fixed_tick.hpp"
 #include "battletanx/lzari.hpp"
 #include "battletanx/level.hpp"
 #include "battletanx/platform.hpp"
@@ -54,10 +55,11 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     std::array<std::uint32_t,battletanx::native_width*battletanx::native_height> pixels{};
     std::array<battletanx::ControllerPad,4> previous{};
     std::array<battletanx::ControllerPad,4> current{};
-    const auto frame_period=std::chrono::microseconds(33333);
+    constexpr std::uint32_t ticks_per_second=30U;
+    const auto clock_start=std::chrono::steady_clock::now();
     auto tank=battletanx::spawn_player_tank(world,navigation);
     battletanx::PlayerProjectilePool projectiles{};
-    std::int32_t game_tick=0;
+    std::uint64_t game_tick=0U;
     constexpr float view_scale=0.12F;
     const auto screen_x=[&](float value) {
         return battletanx::native_width/2+static_cast<int>((value-tank.x)*view_scale);
@@ -66,15 +68,23 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         return battletanx::native_height/2-static_cast<int>((value-tank.z)*view_scale);
     };
     while (platform->pump(current)) {
-        const auto frame_start=std::chrono::steady_clock::now();
         const auto pad=battletanx::translate_player_input(current[0],previous[0]);
-        const auto input=battletanx::translate_drive_input(pad,bindings);
+        auto input=battletanx::translate_drive_input(pad,bindings);
         previous=current;
-        battletanx::update_player_tank(tank,input,world,navigation,angles);
-        battletanx::try_fire_player_projectile(
-            projectiles,tank,input,world,navigation,angles,game_tick);
-        battletanx::update_player_projectiles(projectiles,world,navigation,angles);
-        ++game_tick;
+        const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now()-clock_start).count();
+        const auto target_tick=battletanx::fixed_rate_tick(
+            static_cast<std::uint64_t>(elapsed),ticks_per_second);
+        while (game_tick<target_tick) {
+            battletanx::update_player_tank(tank,input,world,navigation,angles);
+            battletanx::try_fire_player_projectile(
+                projectiles,tank,input,world,navigation,angles,
+                static_cast<std::int32_t>(game_tick));
+            battletanx::update_player_projectiles(projectiles,world,navigation,angles);
+            ++game_tick;
+            input.fire_pressed=false;
+            input.special_pressed=false;
+        }
         pixels.fill(0x00101820U);
         fill_rectangle(pixels,24,24,battletanx::native_width-48,4,0x00608090U);
         fill_rectangle(pixels,24,battletanx::native_height-28,
@@ -116,7 +126,10 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                            5,5,0x00F08030U);
         }
         platform->present(pixels,battletanx::native_width,battletanx::native_height);
-        std::this_thread::sleep_until(frame_start+frame_period);
+        const auto next_tick_nanoseconds=static_cast<std::int64_t>(
+            ((game_tick+1U)*UINT64_C(1000000000)+ticks_per_second-1U)/ticks_per_second);
+        std::this_thread::sleep_until(
+            clock_start+std::chrono::nanoseconds(next_tick_nanoseconds));
     }
 }
 } // namespace

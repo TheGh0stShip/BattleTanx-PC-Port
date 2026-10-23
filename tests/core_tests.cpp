@@ -4,6 +4,7 @@
 #include "battletanx/camera.hpp"
 #include "battletanx/controller_pak.hpp"
 #include "battletanx/gameplay.hpp"
+#include "battletanx/fixed_tick.hpp"
 #include "battletanx/geometry.hpp"
 #include "battletanx/host_input.hpp"
 #include "battletanx/lzari.hpp"
@@ -45,6 +46,14 @@ void put_u32(std::vector<std::uint8_t>& bytes,std::size_t offset,std::uint32_t v
     } while (false)
 
 int main() {
+    CHECK(battletanx::fixed_rate_tick(0U,30U)==0U);
+    CHECK(battletanx::fixed_rate_tick(33333333U,30U)==0U);
+    CHECK(battletanx::fixed_rate_tick(33333334U,30U)==1U);
+    CHECK(battletanx::fixed_rate_tick(1000000000U,30U)==30U);
+    CHECK(battletanx::fixed_rate_tick(1500000000U,30U)==45U);
+    CHECK(battletanx::fixed_rate_tick(UINT64_MAX,0U)==0U);
+    CHECK(battletanx::fixed_rate_tick(UINT64_MAX,30U)>UINT64_C(553000000000));
+
     {
         battletanx::ControllerPakRecord record;
         record.bytes[4]=1U;
