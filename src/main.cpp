@@ -75,7 +75,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         draw.projection=battletanx::perspective_matrix(
             camera.vertical_fov_degrees,camera.aspect_ratio,
             camera.near_plane,camera.far_plane);
-        draw.items.reserve(world.items.size()+4U+projectiles.size());
+        draw.items.reserve(world.items.size()+5U+projectiles.size());
         for (const auto& item:world.items) {
             const std::uint8_t layer=item.type==0 ? 0U : item.type==0x1C ? 6U : 2U;
             draw.items.push_back({static_cast<std::uint32_t>(item.shape),
@@ -96,6 +96,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             static_cast<std::int8_t>(tank.track_phase_right>>4U)});
         draw.items.push_back({assets.set_base()+0x0EU,body,1U,0});
         draw.items.push_back({assets.set_base()+0x0DU,turret_transform,1U,0});
+        draw.items.push_back({assets.set_base()+0x52U,body,5U,0});
         for (const auto& projectile:projectiles) {
             if (!projectile.active) continue;
             draw.items.push_back({assets.set_base()+0x24U,

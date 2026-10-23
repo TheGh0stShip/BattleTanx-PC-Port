@@ -12,7 +12,7 @@ namespace battletanx {
 
 enum class TextureWrap : std::uint8_t { repeat,mirror,clamp };
 enum class CullMode : std::uint8_t { none,back };
-enum class AlphaMode : std::uint8_t { opaque,edge_test,other };
+enum class AlphaMode : std::uint8_t { opaque,edge_test,blend,other };
 enum class CombineMode : std::uint8_t {
     texture_times_shade,primitive,texture,primitive_environment_lerp
 };
@@ -37,6 +37,7 @@ struct NativeMaterial {
     CombineMode combine{CombineMode::texture_times_shade};
     bool bilinear{};
     bool depth_test{};
+    bool depth_write{};
     std::uint32_t primitive_rgba{0xFFFFFFFFU};
     std::uint32_t raw_render_mode{};
     std::vector<MaterialFrame> animation_frames;

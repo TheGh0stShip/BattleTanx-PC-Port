@@ -68,6 +68,7 @@ int main() {
     CHECK(battletanx::decode_world_animation_phase(0x03U)==3);
     CHECK(battletanx::decode_world_animation_phase(0xAEU)==-2);
     CHECK(battletanx::decode_world_animation_phase(0xFFU)==-1);
+    CHECK(battletanx::alpha_blend(0x80FF0000U,0x000000FFU)==0x0080007FU);
     CHECK(battletanx::clipped_view_volume_vertex_count(
         {{{0.0F,0.0F,0.0F,1.0F},{0.5F,0.0F,0.0F,1.0F},
           {0.0F,0.5F,0.0F,1.0F}}})==3U);
@@ -203,6 +204,7 @@ int main() {
         CHECK(decoded.alpha==battletanx::AlphaMode::edge_test);
         CHECK(decoded.combine==battletanx::CombineMode::primitive);
         CHECK(!decoded.texture);
+        CHECK(decoded.depth_test && decoded.depth_write);
         material[8U]=0xAAU;
         bool rejected=false;
         try { static_cast<void>(battletanx::decode_material_blob(material,0U)); }

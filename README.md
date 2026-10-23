@@ -60,6 +60,7 @@ the recovered level-object type filter and each object's rotated level shape.
 The current native presentation decodes and draws the retail world and tank
 meshes with their textures through a host-owned software z-buffer. The tank
 meshes and attached camera follow the decoded terrain height and surface normal.
+The tank shadow uses its recovered translucent texture and render layer.
 The camera contracts toward the tank when its eye path crosses a registered
 static world footprint.
 Several uncommon material modes remain bring-up work rather than a claim of

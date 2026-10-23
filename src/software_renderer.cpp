@@ -159,6 +159,15 @@ std::uint32_t combine(const NativeMaterial& material,std::uint32_t texture,
     return texture;
 }
 
+std::uint32_t blend_source_over(std::uint32_t source,std::uint32_t destination) {
+    const std::uint32_t alpha=source>>24U;
+    const std::uint32_t inverse=255U-alpha;
+    const auto blend=[&](unsigned shift) {
+        return (channel(source,shift)*alpha+channel(destination,shift)*inverse)/255U;
+    };
+    return (blend(16U)<<16U)|(blend(8U)<<8U)|blend(0U);
+}
+
 void rasterize_triangle(int width,int height,std::vector<std::uint32_t>& color,
                         std::vector<float>& depth,const NativeMaterial& material,
                         const MaterialTileOrigin& tile_origin,
@@ -219,8 +228,13 @@ void rasterize_triangle(int width,int height,std::vector<std::uint32_t>& color,
             const std::uint32_t output=combine(
                 material,sample(material,tile_origin,u,v),shade);
             if (material.alpha==AlphaMode::edge_test && (output>>24U)<128U) continue;
-            if (material.depth_test) depth[pixel]=pixel_depth;
-            color[pixel]=output&0x00FFFFFFU;
+            if (material.alpha==AlphaMode::blend) {
+                if ((output>>24U)==0U) continue;
+                color[pixel]=blend_source_over(output,color[pixel]);
+            } else {
+                color[pixel]=output&0x00FFFFFFU;
+            }
+            if (material.depth_write) depth[pixel]=pixel_depth;
         }
     }
 }
@@ -246,6 +260,10 @@ std::int8_t decode_world_animation_phase(std::uint8_t kind) noexcept {
     if (phase==15U) return -1;
     if (phase==14U) return -2;
     return static_cast<std::int8_t>(phase);
+}
+
+std::uint32_t alpha_blend(std::uint32_t source,std::uint32_t destination) noexcept {
+    return blend_source_over(source,destination);
 }
 
 std::size_t clipped_view_volume_vertex_count(
