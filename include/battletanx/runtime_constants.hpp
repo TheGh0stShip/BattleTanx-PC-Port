@@ -17,7 +17,10 @@ struct Footprint { std::int16_t min_x, max_x, min_z, max_z; };
 inline constexpr std::array<Footprint,3> unit_footprint{{
     {-35,35,-73,81},{-26,26,-38,26},{-60,60,-75,81}}};
 
-// spawn_unit: kind 0 primary weapon 1 with 70 rounds, last fire tick -1000.
+// spawn_unit: primary weapon and ammunition indexed by UnitKind.
+inline constexpr std::array<std::uint8_t,3> unit_primary_weapon{1U,2U,3U};
+inline constexpr std::array<std::int16_t,3> unit_primary_ammo{70,150,70};
+// Names retained for tank-only interfaces.
 inline constexpr std::uint8_t tank_primary_weapon=1U;
 inline constexpr std::int16_t tank_primary_ammo=70;
 inline constexpr std::int32_t never_fired_tick=-1000;

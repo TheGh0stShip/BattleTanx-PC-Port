@@ -97,8 +97,17 @@ struct ProjectileContact {
     bool direct{};
 };
 
+// Lightweight shared services used by the definitions-driven projectile
+// runtime. It deliberately excludes the legacy cannon-only shell pool.
+struct WeaponBaseContext {
+    CombatContext& combat;
+    WorldCollision& world;
+    const AngleTable& angles;
+    float frame_scale{1.0F};
+};
+
 struct WeaponContext {
-    ProjectileContext& base;
+    WeaponBaseContext& base;
     WeaponRuntimeState& state;
     EffectEventQueue& effects;
     RetailRandom& random;

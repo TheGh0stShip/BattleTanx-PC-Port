@@ -2,6 +2,8 @@
 #include "battletanx/unit_kinds.hpp"
 #include "runtime_test_support.hpp"
 
+#include <algorithm>
+
 using namespace battletanx;
 using runtime_test::near;
 
@@ -47,6 +49,82 @@ RUNTIME_TEST(movement_tables_use_bike_tank_goliath_order) {
     REQUIRE(near(bike.movement.drag,100.0) && near(goliath.movement.drag,250.0));
     REQUIRE(near(bike.movement.inverse_mass,0.02) && near(tank.movement.inverse_mass,0.01));
     REQUIRE(near(tank.movement.inverse_inertia,1.0/(100.0/12.0*6554.0),1e-9));
+    return true;
+}
+
+RUNTIME_TEST(base_unit_creation_equips_each_vehicle_kind) {
+    const UnitRecord tank=make_unit(
+        retail::UnitKind::tank,0U,0U,0.0F,0.0F,0U,0,UnitControl::player);
+    const UnitRecord bike=make_unit(
+        retail::UnitKind::bike,0U,0U,0.0F,0.0F,0U,0,UnitControl::player);
+    const UnitRecord goliath=make_unit(
+        retail::UnitKind::goliath,0U,0U,0.0F,0.0F,0U,0,UnitControl::player);
+    REQUIRE(tank.primary_weapon.kind==1U && tank.ammo[1]==70);
+    REQUIRE(bike.primary_weapon.kind==2U && bike.ammo[2]==150);
+    REQUIRE(goliath.primary_weapon.kind==3U && goliath.ammo[3]==70);
+    REQUIRE(tank.primary_weapon.last_fire_tick==retail::never_fired_tick);
+    REQUIRE(bike.primary_weapon.last_fire_tick==retail::never_fired_tick);
+    REQUIRE(goliath.primary_weapon.last_fire_tick==retail::never_fired_tick);
+    return true;
+}
+
+RUNTIME_TEST(model_sets_match_retail_vehicle_parts) {
+    REQUIRE(!unit_model_set(3U,false));
+    const auto tank=unit_model_set(0U,false);
+    const auto damaged_tank=unit_model_set(0U,true);
+    const auto bike=unit_model_set(1U,false);
+    const auto damaged_bike=unit_model_set(1U,true);
+    const auto goliath=unit_model_set(2U,false);
+    const auto damaged_goliath=unit_model_set(2U,true);
+    REQUIRE(tank && damaged_tank && bike && damaged_bike && goliath && damaged_goliath);
+    REQUIRE(tank->part_count==4U && tank->shadow_slot==0x52U);
+    REQUIRE(tank->parts[2].slot==0x0DU && damaged_tank->parts[2].slot==0x13U);
+    REQUIRE(tank->parts[2].transform==UnitModelTransform::turret);
+    REQUIRE(bike->part_count==5U && bike->shadow_slot==0x53U);
+    REQUIRE(bike->parts[2].slot==0x19U && bike->parts[3].slot==0x1CU &&
+            bike->parts[4].slot==0x1DU);
+    REQUIRE(damaged_bike->parts[2].slot==0x21U &&
+            damaged_bike->parts[3].slot==0x22U && damaged_bike->parts[4].slot==0x1EU);
+    REQUIRE(goliath->part_count==4U && goliath->shadow_slot==0x54U);
+    REQUIRE(goliath->parts[0].slot==0x29U &&
+            goliath->parts[0].transform==UnitModelTransform::turret);
+    REQUIRE(damaged_goliath->parts[0].slot==0x2DU &&
+            damaged_goliath->parts[3].slot==0x2EU);
+    return true;
+}
+
+RUNTIME_TEST(vehicle_movement_uses_per_kind_retail_constants) {
+    NavigationLevel navigation;
+    navigation.vertices={{},{-200000.0F,-200000.0F},{200000.0F,-200000.0F},
+                         {0.0F,400000.0F}};
+    NavigationTriangle triangle;
+    triangle.corners[0].vertex=1U;
+    triangle.corners[1].vertex=2U;
+    triangle.corners[2].vertex=3U;
+    navigation.triangles={{},triangle};
+    if (!navigation_point_inside_triangle(navigation,{0.0F,0.0F},1U)) {
+        std::swap(navigation.triangles[1].corners[1],navigation.triangles[1].corners[2]);
+    }
+    WorldLevel world;
+    const AngleTable angles=reference_angle_table();
+    const DriveInput forward{80.0F};
+    const auto move=[&](std::uint8_t kind) {
+        const auto definition=*unit_kind_definition(kind);
+        PlayerTank vehicle;
+        vehicle.navigation_triangle=1U;
+        const VehicleDriveParameters parameters{
+            definition.movement.accel,definition.movement.inverse_mass,
+            definition.movement.grip,definition.movement.drag,definition.footprint};
+        update_player_tank(vehicle,forward,world,navigation,angles,parameters);
+        return vehicle;
+    };
+    const PlayerTank tank=move(0U);
+    const PlayerTank bike=move(1U);
+    const PlayerTank goliath=move(2U);
+    REQUIRE(near(tank.velocity_z,36.0) && near(tank.z,5.4));
+    REQUIRE(near(bike.velocity_z,55.2) && near(bike.z,8.28));
+    REQUIRE(near(goliath.velocity_z,27.6) && near(goliath.z,4.14));
+    REQUIRE(bike.z>tank.z && tank.z>goliath.z);
     return true;
 }
 

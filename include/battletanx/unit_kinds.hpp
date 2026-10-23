@@ -41,7 +41,21 @@ struct UnitKindDefinition {
     bool rail_capable{};                   // spawn_unit kind 2 + rail zone
 };
 
+enum class UnitModelTransform : std::uint8_t { body, turret };
+enum class UnitModelAnimation : std::uint8_t { none, left_track, right_track };
+struct UnitModelPart {
+    std::uint16_t slot{};
+    UnitModelTransform transform{};
+    UnitModelAnimation animation{};
+};
+struct UnitModelSet {
+    std::array<UnitModelPart,5> parts{};
+    std::uint8_t part_count{};
+    std::uint16_t shadow_slot{};
+};
+
 [[nodiscard]] std::optional<UnitKindDefinition> unit_kind_definition(std::uint8_t kind) noexcept;
+[[nodiscard]] std::optional<UnitModelSet> unit_model_set(std::uint8_t kind,bool damaged) noexcept;
 
 // spawn_unit rail zone (session +0xC8, 4 zones of 0x14). World coordinates; the
 // retail record stores each point as {z-named, x-named} with x in the second word.

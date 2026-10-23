@@ -128,11 +128,15 @@ PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navi
 void update_player_tank(PlayerTank& tank,const DriveInput& input,
                         const WorldLevel& world,const NavigationLevel& navigation,
                         const AngleTable& angles) {
+    update_player_tank(tank,input,world,navigation,angles,
+        VehicleDriveParameters{0.18F,1.0F/100.0F,300.0F,250.0F,
+                               retail::unit_footprint[0]});
+}
+
+void update_player_tank(PlayerTank& tank,const DriveInput& input,
+                        const WorldLevel& world,const NavigationLevel& navigation,
+                        const AngleTable& angles,const VehicleDriveParameters& parameters) {
     constexpr float frame_rate_scale=0.15F;
-    constexpr float turn_acceleration=0.18F;
-    constexpr float acceleration_scale=1.0F/100.0F;
-    constexpr float grip=300.0F;
-    constexpr float drag=250.0F;
     tank.track_phase_left=static_cast<std::uint8_t>(tank.track_phase_left+tank.track_left);
     tank.track_phase_right=static_cast<std::uint8_t>(tank.track_phase_right+tank.track_right);
     const float previous_heading=tank.heading_degrees;
@@ -140,7 +144,7 @@ void update_player_tank(PlayerTank& tank,const DriveInput& input,
     float steering=input.rotation;
     const float throttle=std::clamp(input.throttle,-200.0F,200.0F);
     if (tank.velocity_x<5.0F && tank.velocity_z<5.0F) steering*=1.5F;
-    const float turn=steering*turn_acceleration*frame_rate_scale;
+    const float turn=steering*parameters.turn_acceleration*frame_rate_scale;
     tank.heading_degrees=wrap_degrees(tank.heading_degrees-turn);
     tank.turret_degrees=wrap_degrees(tank.turret_degrees-turn);
     tank.track_left=static_cast<std::int8_t>(
@@ -150,14 +154,16 @@ void update_player_tank(PlayerTank& tank,const DriveInput& input,
 
     const auto angle=degrees_to_angle(tank.heading_degrees);
     PlanarMotion motion{};
-    motion.acceleration_scale=acceleration_scale;
+    motion.acceleration_scale=parameters.acceleration_scale;
     motion.x=tank.x;
     motion.z=tank.z;
     motion.velocity_x=tank.velocity_x;
     motion.velocity_z=tank.velocity_z;
     motion.heading_degrees=tank.heading_degrees;
-    motion.acceleration_x=grip*throttle*angles.sine(angle)-tank.velocity_x*drag;
-    motion.acceleration_z=grip*throttle*angles.cosine(angle)-tank.velocity_z*drag;
+    motion.acceleration_x=parameters.grip*throttle*angles.sine(angle)-
+                          tank.velocity_x*parameters.drag;
+    motion.acceleration_z=parameters.grip*throttle*angles.cosine(angle)-
+                          tank.velocity_z*parameters.drag;
     advance_planar_motion(motion,frame_rate_scale);
     motion.velocity_x=std::clamp(motion.velocity_x,-512.0F,512.0F);
     motion.velocity_z=std::clamp(motion.velocity_z,-512.0F,512.0F);
@@ -166,7 +172,11 @@ void update_player_tank(PlayerTank& tank,const DriveInput& input,
     const auto trace=trace_navigation_segment(
         navigation,tank.navigation_triangle,from,candidate);
     bool world_blocked=false;
-    const OrientedRect footprint{candidate.x,candidate.z,-35.0F,35.0F,-73.0F,81.0F,
+    const OrientedRect footprint{candidate.x,candidate.z,
+                                 static_cast<float>(parameters.footprint.min_x),
+                                 static_cast<float>(parameters.footprint.max_x),
+                                 static_cast<float>(parameters.footprint.min_z),
+                                 static_cast<float>(parameters.footprint.max_z),
                                  degrees_to_angle(tank.heading_degrees)};
     for (const auto& item:world.items) {
         if (item.shape<0 || static_cast<std::size_t>(item.shape)>=world.shapes.size()) continue;

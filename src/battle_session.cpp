@@ -1,4 +1,5 @@
 #include "battletanx/battle_session.hpp"
+#include "battletanx/unit_kinds.hpp"
 
 #include <memory>
 #include <stdexcept>
@@ -26,12 +27,17 @@ UnitMotion motion_over(std::shared_ptr<const MotionData> data) {
             if (unit.navigation_triangle==0U) return;   // off the navigation mesh: stay put
         }
         PlayerTank tank=to_player_tank(unit);
-        update_player_tank(tank,input,data->world,data->navigation,data->angles);
-        const auto ammo=unit.ammo[retail::tank_primary_weapon];
-        const auto last=unit.primary_weapon.last_fire_tick;
+        const auto definition=unit_kind_definition(static_cast<std::uint8_t>(unit.kind));
+        if (!definition) return;
+        const VehicleDriveParameters parameters{
+            definition->movement.accel,definition->movement.inverse_mass,
+            definition->movement.grip,definition->movement.drag,definition->footprint};
+        update_player_tank(tank,input,data->world,data->navigation,data->angles,parameters);
+        const auto ammo=unit.ammo;
+        const auto primary=unit.primary_weapon;
         sync_unit_from_player_tank(unit,tank);
-        unit.ammo[retail::tank_primary_weapon]=ammo;   // weapons are owned by the session
-        unit.primary_weapon.last_fire_tick=last;
+        unit.ammo=ammo;                         // weapons are owned by the session
+        unit.primary_weapon=primary;
     };
 }
 
@@ -100,23 +106,6 @@ void write_unit(StateWriter& writer,const UnitRecord& unit) {
     writer.f32(unit.hit_shake);
     writer.id(unit.target);
     writer.u16(unit.navigation_triangle);
-}
-
-void write_shell(StateWriter& writer,const ShellRecord& shell) {
-    writer.f32(shell.x);
-    writer.f32(shell.y);
-    writer.f32(shell.z);
-    writer.f32(shell.velocity_x);
-    writer.f32(shell.velocity_z);
-    writer.f32(shell.speed);
-    writer.f32(shell.travelled);
-    writer.f32(shell.range);
-    writer.u16(shell.heading);
-    writer.s16(shell.life);
-    writer.u8(shell.damage);
-    writer.u8(shell.attacker);
-    writer.boolean(shell.local);
-    writer.id(shell.ignore);
 }
 
 } // namespace
@@ -310,7 +299,8 @@ void BattleSession::update_units(const SessionInput& input) {
     }
 
     CombatContext combat=combat_context();
-    ProjectileContext projectiles{combat,shells_,world_,angles_};
+    WeaponBaseContext projectiles{combat,world_,angles_};
+    WeaponContext weapons{projectiles,weapon_state_,effects_,rng_};
     for (std::size_t slot=0U; slot<unit_capacity; ++slot) {
         const EntityId id=units_.slot_id(slot);
         UnitRecord* unit=units_.get(id);
@@ -334,8 +324,8 @@ void BattleSession::update_units(const SessionInput& input) {
         if (!unit->alive) continue;
         motion_(*unit,drive);
         if (drive.fire) {
-            fire_unit_weapon(projectiles,id,unit->primary_weapon,
-                             FireRequest{true,drive.fire_pressed});
+            (void)fire_weapon(weapons,id,unit->primary_weapon,
+                              FireRequest{true,drive.fire_pressed});
         }
     }
 }
@@ -400,8 +390,9 @@ void BattleSession::step(const SessionInput& input) {
     if (mission_.simulation_running() && mission_.state()!=MatchState::paused) {
         release_destroyed_units();
         CombatContext combat=combat_context();
-        ProjectileContext projectiles{combat,shells_,world_,angles_};
-        update_shells(projectiles);
+        WeaponBaseContext projectiles{combat,world_,angles_};
+        WeaponContext weapons{projectiles,weapon_state_,effects_,rng_};
+        update_weapon_projectiles(weapons);
         update_units(input);
         update_pickup_state();
     }
@@ -448,11 +439,7 @@ void BattleSession::serialize(StateWriter& writer) const {
         writer.s32(pickup.owner_class);
         writer.boolean(pickup.removed);
     }
-    for (std::size_t slot=0U; slot<shell_capacity; ++slot) {
-        writer.boolean(shells_.slot_occupied(slot));
-        writer.u16(shells_.slot_generation(slot));
-        if (const ShellRecord* shell=shells_.get(shells_.slot_id(slot))) write_shell(writer,*shell);
-    }
+    weapon_state_.serialize(writer);
 }
 
 std::string BattleSession::checksum() const {

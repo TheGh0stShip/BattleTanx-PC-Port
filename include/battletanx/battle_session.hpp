@@ -9,8 +9,8 @@
 #include "battletanx/navigation_route.hpp"
 #include "battletanx/objective_runtime.hpp"
 #include "battletanx/pickup_runtime.hpp"
-#include "battletanx/projectile_runtime.hpp"
 #include "battletanx/state_hash.hpp"
+#include "battletanx/weapon_runtime.hpp"
 
 #include <array>
 #include <cstdint>
@@ -112,16 +112,20 @@ public:
 
     [[nodiscard]] std::span<const GameplayEvent> gameplay_events() const noexcept { return events_.events(); }
     [[nodiscard]] std::span<const SoundEvent> sound_events() const noexcept { return sounds_.events(); }
+    [[nodiscard]] std::span<const EffectEvent> effect_events() const noexcept { return effects_.events(); }
     void clear_events() noexcept {
         events_.clear();
         sounds_.clear();
+        effects_.clear();
         objective_event_cursor_=0U;
     }
 
     [[nodiscard]] std::int32_t tick() const noexcept { return tick_; }
     [[nodiscard]] const UnitPool& units() const noexcept { return units_; }
     [[nodiscard]] UnitPool& units() noexcept { return units_; }
-    [[nodiscard]] const ShellPool& shells() const noexcept { return shells_; }
+    [[nodiscard]] const WeaponProjectilePool& projectiles() const noexcept {
+        return weapon_state_.projectiles;
+    }
     [[nodiscard]] const std::array<OwnerRecord,owner_capacity>& owners() const noexcept { return owners_; }
     [[nodiscard]] const MissionState& mission() const noexcept { return mission_; }
     [[nodiscard]] MissionState& mission() noexcept { return mission_; }
@@ -151,7 +155,7 @@ private:
     WorldCollision world_;
     RoutePlanner route_planner_;
     UnitPool units_;
-    ShellPool shells_;
+    WeaponRuntimeState weapon_state_;
     std::array<OwnerRecord,owner_capacity> owners_{};
     std::array<bool,owner_capacity> objective_bases_{};
     std::array<std::optional<RespawnPoint>,owner_capacity> respawn_points_{};
@@ -163,6 +167,7 @@ private:
     RetailRandom rng_;
     GameplayEventQueue events_{1024U};
     SoundEventQueue sounds_{1024U};
+    EffectEventQueue effects_{1024U};
     std::size_t objective_event_cursor_{};
     std::int32_t tick_{};
 };

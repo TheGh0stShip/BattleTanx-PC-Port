@@ -36,10 +36,9 @@ UnitRecord make_unit(retail::UnitKind kind,std::uint8_t owner,std::uint8_t team,
     unit.health=unit.max_health;
     unit.footprint=retail::unit_footprint[index];
     unit.spawn_tick=tick;
-    if (kind==retail::UnitKind::tank) {
-        unit.primary_weapon.kind=retail::tank_primary_weapon;
-        unit.ammo[retail::tank_primary_weapon]=retail::tank_primary_ammo;
-    }
+    unit.primary_weapon.kind=retail::unit_primary_weapon[index];
+    unit.primary_weapon.last_fire_tick=retail::never_fired_tick;
+    unit.ammo[unit.primary_weapon.kind]=retail::unit_primary_ammo[index];
     return unit;
 }
 

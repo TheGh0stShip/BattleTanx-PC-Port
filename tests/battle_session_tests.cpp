@@ -89,7 +89,7 @@ Outcome run(Battle& battle,std::int32_t max_frames,InputFor input_for) {
 }
 
 constexpr const char* expected_battle_checksum=
-    "2e0cee989ecf83b4808dc7d3cb0b371efdb7aee352e2ac360ce31bafc2ddb0c6";
+    "4feb42c33a9b47f1a36c132d70a53c2ea3971833e2cb9b89f1a67c6cb4a6d0e3";
 } // namespace
 
 RUNTIME_TEST(headless_battle_player_destroys_enemy_and_succeeds) {
@@ -133,6 +133,35 @@ RUNTIME_TEST(one_tick_input_change_diverges) {
         return input;
     });
     REQUIRE(a.checksum!=b.checksum);
+    return true;
+}
+
+RUNTIME_TEST(bike_fires_alternating_machine_guns_in_session) {
+    BattleSession session(config_with_seed(9U),angles(),open_ground_unit_motion(angles()));
+    session.add_owner(0U,OwnerSetup{0U,false,1U,0,false});
+    session.add_owner(1U,OwnerSetup{1U,true,1U,0,false});
+    const EntityId bike=*session.spawn_unit(
+        UnitSpawn{retail::UnitKind::bike,0U,0.0F,0.0F,0U,0U});
+    session.spawn_unit(UnitSpawn{retail::UnitKind::tank,1U,0.0F,5000.0F,0U,0U});
+    session.mission().force_state(MatchState::live,0);
+    SessionInput fire;
+    fire.drive.fire=true;
+    fire.drive.fire_pressed=true;
+    session.step(fire);
+    fire.drive.fire_pressed=false;
+    for (int i=0; i<4; ++i) session.step(fire);
+    const UnitRecord* unit=session.units().get(bike);
+    REQUIRE(unit!=nullptr && unit->primary_weapon.kind==2U && unit->ammo[2]==148);
+    std::size_t projectile_count=0U;
+    session.projectiles().for_each(
+        [&](EntityId,const WeaponProjectile&) { ++projectile_count; });
+    REQUIRE(projectile_count==2U);
+    const WeaponProjectile* left=session.projectiles().get(session.projectiles().slot_id(0U));
+    const WeaponProjectile* right=session.projectiles().get(session.projectiles().slot_id(1U));
+    REQUIRE(left!=nullptr && right!=nullptr);
+    REQUIRE(left->weapon==2U && left->bullet_kind==1U && left->damage==2U);
+    REQUIRE(right->weapon==2U && right->bullet_kind==1U && right->damage==2U);
+    REQUIRE(left->x<0.0F && right->x>0.0F);
     return true;
 }
 

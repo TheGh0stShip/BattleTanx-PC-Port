@@ -15,7 +15,6 @@ struct Arena {
     GameplayEventQueue events;
     SoundEventQueue sounds;
     CombatConfig config;
-    ShellPool shells;
     WorldCollision world;
     AngleTable angles=reference_angle_table();
     WeaponRuntimeState state;
@@ -40,7 +39,7 @@ struct Arena {
     template <typename Body>
     void run(Body&& body) {
         CombatContext combat{units,owners,events,sounds,config,tick};
-        ProjectileContext base{combat,shells,world,angles,1.0F};
+        WeaponBaseContext base{combat,world,angles,1.0F};
         WeaponContext context{base,state,effects,random};
         body(context);
     }

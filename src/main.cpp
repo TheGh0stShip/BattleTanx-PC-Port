@@ -19,6 +19,7 @@
 #include "battletanx/rom.hpp"
 #include "battletanx/software_renderer.hpp"
 #include "battletanx/terrain.hpp"
+#include "battletanx/unit_kinds.hpp"
 
 #include <algorithm>
 #include <array>
@@ -284,16 +285,26 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             const auto turret_transform=battletanx::terrain_yaw_translation_matrix(
                 turret,unit.x,unit_y,unit.z,normal,angles);
             const bool damaged=unit.health>0 && unit.health<=unit.max_health/2;
-            draw.items.push_back({assets.set_base()+0x0BU,body,1U,
-                static_cast<std::int8_t>(unit.track_phase_left>>4U)});
-            draw.items.push_back({assets.set_base()+0x0CU,body,1U,
-                static_cast<std::int8_t>(unit.track_phase_right>>4U)});
-            draw.items.push_back({assets.set_base()+(damaged ? 0x14U : 0x0EU),body,1U,0});
-            draw.items.push_back({assets.set_base()+(damaged ? 0x13U : 0x0DU),
-                                  turret_transform,1U,0});
-            draw.items.push_back({assets.set_base()+0x52U,body,5U,0});
+            const auto models=battletanx::unit_model_set(
+                static_cast<std::uint8_t>(unit.kind),damaged);
+            if (!models) return;
+            for (std::size_t index=0U; index<models->part_count; ++index) {
+                const auto& part=models->parts[index];
+                const auto& transform=part.transform==battletanx::UnitModelTransform::turret ?
+                    turret_transform : body;
+                std::int8_t phase=0;
+                if (part.animation==battletanx::UnitModelAnimation::left_track) {
+                    phase=static_cast<std::int8_t>(unit.track_phase_left>>4U);
+                } else if (part.animation==battletanx::UnitModelAnimation::right_track) {
+                    phase=static_cast<std::int8_t>(unit.track_phase_right>>4U);
+                }
+                draw.items.push_back({assets.set_base()+part.slot,transform,1U,phase});
+            }
+            draw.items.push_back({assets.set_base()+models->shadow_slot,body,5U,0});
         });
-        session.shells().for_each([&](battletanx::EntityId,const battletanx::ShellRecord& shell) {
+        session.projectiles().for_each(
+            [&](battletanx::EntityId,const battletanx::WeaponProjectile& shell) {
+            if (shell.effect_kind!=34U) return;
             draw.items.push_back({assets.set_base()+0x24U,
                 battletanx::yaw_translation_matrix(
                     shell.heading,shell.x,shell.y,shell.z,angles),3U,0});

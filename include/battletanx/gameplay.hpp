@@ -2,6 +2,7 @@
 
 #include "battletanx/angle.hpp"
 #include "battletanx/level.hpp"
+#include "battletanx/runtime_constants.hpp"
 
 #include <array>
 #include <cstdint>
@@ -69,6 +70,14 @@ struct PlayerTank {
     std::uint8_t track_phase_right{};
 };
 
+struct VehicleDriveParameters {
+    float turn_acceleration{};
+    float acceleration_scale{};
+    float grip{};
+    float drag{};
+    retail::Footprint footprint{};
+};
+
 struct PlayerProjectile {
     float x{};
     float z{};
@@ -90,6 +99,9 @@ PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navi
 void update_player_tank(PlayerTank& tank,const DriveInput& input,
                         const WorldLevel& world,const NavigationLevel& navigation,
                         const AngleTable& angles);
+void update_player_tank(PlayerTank& tank,const DriveInput& input,
+                        const WorldLevel& world,const NavigationLevel& navigation,
+                        const AngleTable& angles,const VehicleDriveParameters& parameters);
 bool try_fire_player_projectile(PlayerProjectilePool& projectiles,PlayerTank& tank,
                                 const DriveInput& input,const WorldLevel& world,
                                 const NavigationLevel& navigation,const AngleTable& angles,

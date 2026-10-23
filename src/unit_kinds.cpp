@@ -13,8 +13,6 @@ inline constexpr std::array<float,3> table_efc{200000.0F,200000.0F,200000.0F};  
 inline constexpr std::array<float,3> table_f08{100.0F,250.0F,250.0F};            // ROM 0xB5F08
 inline constexpr std::array<float,3> table_f18{230.0F,300.0F,230.0F};            // ROM 0xB5F18
 inline constexpr std::array<float,3> table_f24{50.0F,100.0F,100.0F};             // ROM 0xB5F24
-inline constexpr std::array<std::uint8_t,3> kind_weapon{1U,2U,3U};
-inline constexpr std::array<std::int16_t,3> kind_ammo{70,150,70};
 
 std::size_t movement_index(retail::UnitKind kind) noexcept {
     switch (kind) {
@@ -99,12 +97,46 @@ std::optional<UnitKindDefinition> unit_kind_definition(std::uint8_t kind) noexce
     d.movement.value3BC=table_efc[m];
     d.movement.accel=table_ef0[m];
     d.movement.drag=table_f08[m];
-    d.primary_weapon=kind_weapon[kind];
-    d.primary_ammo=kind_ammo[kind];
+    d.primary_weapon=retail::unit_primary_weapon[kind];
+    d.primary_ammo=retail::unit_primary_ammo[kind];
     d.kill_score=retail::kill_score[kind];
     d.crushed_by_goliath=d.kind==retail::UnitKind::bike;
     d.rail_capable=d.kind==retail::UnitKind::goliath;
     return d;
+}
+
+std::optional<UnitModelSet> unit_model_set(std::uint8_t kind,bool damaged) noexcept {
+    using Transform=UnitModelTransform;
+    using Animation=UnitModelAnimation;
+    UnitModelSet result;
+    switch (static_cast<retail::UnitKind>(kind)) {
+    case retail::UnitKind::tank:
+        result.parts={{{0x0BU,Transform::body,Animation::left_track},
+                       {0x0CU,Transform::body,Animation::right_track},
+                       {static_cast<std::uint16_t>(damaged ? 0x13U : 0x0DU),Transform::turret,Animation::none},
+                       {static_cast<std::uint16_t>(damaged ? 0x14U : 0x0EU),Transform::body,Animation::none}}};
+        result.part_count=4U;
+        result.shadow_slot=0x52U;
+        return result;
+    case retail::UnitKind::bike:
+        result.parts={{{0x1AU,Transform::body,Animation::left_track},
+                       {0x1BU,Transform::body,Animation::right_track},
+                       {static_cast<std::uint16_t>(damaged ? 0x21U : 0x19U),Transform::body,Animation::none},
+                       {static_cast<std::uint16_t>(damaged ? 0x22U : 0x1CU),Transform::body,Animation::none},
+                       {static_cast<std::uint16_t>(damaged ? 0x1EU : 0x1DU),Transform::body,Animation::none}}};
+        result.part_count=5U;
+        result.shadow_slot=0x53U;
+        return result;
+    case retail::UnitKind::goliath:
+        result.parts={{{static_cast<std::uint16_t>(damaged ? 0x2DU : 0x29U),Transform::turret,Animation::none},
+                       {static_cast<std::uint16_t>(damaged ? 0x2BU : 0x27U),Transform::body,Animation::left_track},
+                       {static_cast<std::uint16_t>(damaged ? 0x2CU : 0x28U),Transform::body,Animation::right_track},
+                       {static_cast<std::uint16_t>(damaged ? 0x2EU : 0x2AU),Transform::body,Animation::none}}};
+        result.part_count=4U;
+        result.shadow_slot=0x54U;
+        return result;
+    }
+    return std::nullopt;
 }
 
 void RailState::serialize(StateWriter& writer) const {
