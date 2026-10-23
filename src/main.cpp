@@ -173,8 +173,10 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             const auto turret_transform=battletanx::terrain_yaw_translation_matrix(
                 turret,unit.x,unit_y,unit.z,normal,angles);
             const bool damaged=unit.health>0 && unit.health<=unit.max_health/2;
-            draw.items.push_back({assets.set_base()+0x0BU,body,1U,-1});
-            draw.items.push_back({assets.set_base()+0x0CU,body,1U,-1});
+            draw.items.push_back({assets.set_base()+0x0BU,body,1U,
+                static_cast<std::int8_t>(unit.track_phase_left>>4U)});
+            draw.items.push_back({assets.set_base()+0x0CU,body,1U,
+                static_cast<std::int8_t>(unit.track_phase_right>>4U)});
             draw.items.push_back({assets.set_base()+(damaged ? 0x14U : 0x0EU),body,1U,0});
             draw.items.push_back({assets.set_base()+(damaged ? 0x13U : 0x0DU),
                                   turret_transform,1U,0});
@@ -223,7 +225,7 @@ int main(int argc, char** argv) {
             pak=battletanx::load_controller_pak_record(pak_path);
         }
         if (!pak) throw std::runtime_error("failed to mount virtual Controller Pak");
-        const auto campaign=battletanx::parse_campaign_record(*pak);
+        auto campaign=battletanx::parse_campaign_record(*pak);
         if (!campaign) throw std::runtime_error("Controller Pak campaign record is invalid");
         std::cout << "Mounted verified Controller Pak image at "
                   << pak_path.string() << '\n';
@@ -246,7 +248,17 @@ int main(int argc, char** argv) {
         constexpr std::size_t angle_table_size=battletanx::AngleTable::value_count*4U;
         const auto angles=battletanx::AngleTable::from_big_endian(
             rom.bytes().subspan(angle_table_offset,angle_table_size));
-        const auto bindings=battletanx::load_default_input_bindings(rom);
+        auto bindings=battletanx::load_default_input_bindings(rom);
+        const bool saved_bindings=std::any_of(
+            campaign->bindings.begin(),campaign->bindings.end(),
+            [](std::uint32_t word) { return word!=0U; });
+        if (saved_bindings) {
+            bindings.words=campaign->bindings;
+        } else {
+            campaign->bindings=bindings.words;
+            battletanx::write_controller_pak_record(
+                pak_path,battletanx::serialize_campaign_record(*campaign));
+        }
         if (std::abs(angles.sine(0x4000U)-1.0F)>0.0001F ||
             std::abs(angles.cosine(0U)-1.0F)>0.0001F) {
             throw std::runtime_error("retail angle table failed cardinal-direction validation");

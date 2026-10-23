@@ -58,6 +58,22 @@ RUNTIME_TEST(tank_defaults_match_spawn_unit) {
     return true;
 }
 
+RUNTIME_TEST(player_tank_adapter_preserves_tread_animation_state) {
+    PlayerTank tank;
+    tank.track_left=-39;
+    tank.track_right=41;
+    tank.track_phase_left=0xD8U;
+    tank.track_phase_right=0x27U;
+    UnitRecord unit=unit_from_player_tank(tank,0U,0U,0);
+    REQUIRE(unit.track_left==-39 && unit.track_right==41);
+    REQUIRE(unit.track_phase_left==0xD8U && unit.track_phase_right==0x27U);
+    PlayerTank restored;
+    sync_player_tank_from_unit(restored,unit);
+    REQUIRE(restored.track_left==-39 && restored.track_right==41);
+    REQUIRE(restored.track_phase_left==0xD8U && restored.track_phase_right==0x27U);
+    return true;
+}
+
 RUNTIME_TEST(scaled_damage_truncates_and_clamps_to_one) {
     REQUIRE(scaled_damage(17,100.0F,nullptr)==17);
     REQUIRE(scaled_damage(17,80.0F,nullptr)==13);          // 13.6 truncated

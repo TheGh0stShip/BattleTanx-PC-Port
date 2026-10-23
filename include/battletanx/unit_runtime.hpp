@@ -35,6 +35,8 @@ struct UnitRecord {
     float heading_degrees{};             // +0x400
     float turret_degrees{};              // +0x3FC
     float velocity_x{}, velocity_z{};
+    std::int8_t track_left{}, track_right{};
+    std::uint8_t track_phase_left{}, track_phase_right{};
     std::int32_t health{};               // +0x1C
     std::int32_t max_health{};           // +0x20
     std::int32_t shield_strength{};      // attached shield +0x18; 0 = none

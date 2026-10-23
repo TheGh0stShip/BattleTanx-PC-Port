@@ -85,7 +85,7 @@ Outcome run(Battle& battle,std::int32_t max_frames,InputFor input_for) {
 }
 
 constexpr const char* expected_battle_checksum=
-    "b987c6b60ebfcdb2285162bd6ea534e01f68a07f4c646e5ffba50e26ceac2942";
+    "bf3ff6c587b6d6cdaa06b9ac1650e8756e60b6e9091a9774bde7ab47f37f468b";
 } // namespace
 
 RUNTIME_TEST(headless_battle_player_destroys_enemy_and_succeeds) {

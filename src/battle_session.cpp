@@ -83,6 +83,10 @@ void write_unit(StateWriter& writer,const UnitRecord& unit) {
     writer.f32(unit.turret_degrees);
     writer.f32(unit.velocity_x);
     writer.f32(unit.velocity_z);
+    writer.u8(static_cast<std::uint8_t>(unit.track_left));
+    writer.u8(static_cast<std::uint8_t>(unit.track_right));
+    writer.u8(unit.track_phase_left);
+    writer.u8(unit.track_phase_right);
     writer.s32(unit.health);
     writer.s32(unit.max_health);
     writer.s32(unit.shield_strength);

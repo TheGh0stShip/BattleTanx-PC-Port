@@ -57,6 +57,10 @@ void sync_unit_from_player_tank(UnitRecord& unit,const PlayerTank& tank) noexcep
     unit.z=tank.z;
     unit.velocity_x=tank.velocity_x;
     unit.velocity_z=tank.velocity_z;
+    unit.track_left=tank.track_left;
+    unit.track_right=tank.track_right;
+    unit.track_phase_left=tank.track_phase_left;
+    unit.track_phase_right=tank.track_phase_right;
     unit.heading_degrees=tank.heading_degrees;
     unit.turret_degrees=tank.turret_degrees;
     unit.navigation_triangle=tank.navigation_triangle;
@@ -69,6 +73,10 @@ void sync_player_tank_from_unit(PlayerTank& tank,const UnitRecord& unit) noexcep
     tank.z=unit.z;
     tank.velocity_x=unit.velocity_x;
     tank.velocity_z=unit.velocity_z;
+    tank.track_left=unit.track_left;
+    tank.track_right=unit.track_right;
+    tank.track_phase_left=unit.track_phase_left;
+    tank.track_phase_right=unit.track_phase_right;
     tank.heading_degrees=unit.heading_degrees;
     tank.turret_degrees=unit.turret_degrees;
     tank.navigation_triangle=unit.navigation_triangle;
