@@ -148,8 +148,8 @@ closing the window exits.
 The current playable slice is not yet the complete campaign. Remaining work
 includes campaign menus and level transitions, recovered scripted enemy goals,
 the remaining weapons and effects, full pickup behavior, the remaining music
-selection paths and continuous vehicle sounds, and several uncommon render
-modes.
+selection paths, and several uncommon render modes. The player tank now uses
+the retail looping engine and skid sounds with speed-driven pitch and volume.
 
 Up to four hot-pluggable SDL game controllers are assigned to ports in
 connection order. The left stick supplies the N64 analog stick, the D-pad and

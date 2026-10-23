@@ -2,6 +2,7 @@
 
 #include "battletanx/rom.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -11,14 +12,31 @@ namespace battletanx {
 struct PcmSound {
     std::vector<std::int16_t> samples;
     std::uint32_t sample_rate{};
+    std::uint32_t loop_start{};
+    std::uint32_t loop_end{};
     std::uint8_t volume{127U};
     std::uint8_t pan{64U};
 };
+
+[[nodiscard]] double advance_looping_cursor(double cursor,float pitch,
+                                            std::size_t sample_count,
+                                            std::uint32_t loop_start,
+                                            std::uint32_t loop_end) noexcept;
 
 struct SoundBank {
     std::vector<PcmSound> sounds;
     std::uint32_t sample_rate{};
 };
+
+struct VehicleSoundMix {
+    float speed{};
+    float engine_gain{};
+    float engine_pitch{};
+    float skid_gain{};
+};
+
+[[nodiscard]] VehicleSoundMix vehicle_sound_mix(float velocity_x,float velocity_z,
+                                                 float master_gain) noexcept;
 
 struct MusicTrack {
     std::vector<std::int16_t> stereo_samples;

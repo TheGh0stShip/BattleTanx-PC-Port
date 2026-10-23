@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -38,6 +39,30 @@ void require_range(std::span<const std::uint8_t> bytes,std::size_t offset,
     }
 }
 } // namespace
+
+double advance_looping_cursor(double cursor,float pitch,std::size_t sample_count,
+                              std::uint32_t loop_start,std::uint32_t loop_end) noexcept {
+    if (!std::isfinite(cursor) || !std::isfinite(pitch) || pitch<=0.0F || sample_count==0U) {
+        return 0.0;
+    }
+    const double begin=loop_end>loop_start && loop_end<=sample_count ? loop_start : 0U;
+    const double end=loop_end>loop_start && loop_end<=sample_count ? loop_end : sample_count;
+    cursor+=pitch;
+    if (cursor>=end) cursor=begin+std::fmod(cursor-begin,end-begin);
+    return cursor;
+}
+
+VehicleSoundMix vehicle_sound_mix(float velocity_x,float velocity_z,
+                                  float master_gain) noexcept {
+    if (!std::isfinite(velocity_x) || !std::isfinite(velocity_z) ||
+        !std::isfinite(master_gain)) return {};
+    const float x=std::abs(velocity_x);
+    const float z=std::abs(velocity_z);
+    const float speed=std::min(1.0F,(std::max(x,z)+0.75F*std::min(x,z))/100.0F);
+    master_gain=std::clamp(master_gain,0.0F,1.0F);
+    return {speed,0.5F*master_gain,speed+0.8F,
+            speed>0.5F ? 2.0F*(speed-0.5F)*master_gain : 0.0F};
+}
 
 std::vector<std::int16_t> decode_vadpcm(
     std::span<const std::uint8_t> encoded,
@@ -143,6 +168,20 @@ SoundBank load_sound_effect_bank(const Rom& rom) {
         PcmSound decoded;
         decoded.samples=decode_vadpcm(
             waves.subspan(sample_offset,sample_size),coefficients,predictors);
+        const std::size_t loop=view.u32(wave+12U);
+        if (loop!=0U) {
+            require_range(control,loop,12U,"loop record");
+            const std::uint32_t loop_start=view.u32(loop);
+            const std::uint32_t loop_end=view.u32(loop+4U);
+            const std::uint32_t loop_count=view.u32(loop+8U);
+            if (loop_count!=0U) {
+                if (loop_end<=loop_start || loop_end>decoded.samples.size()) {
+                    throw std::runtime_error("sound bank loop range is invalid");
+                }
+                decoded.loop_start=loop_start;
+                decoded.loop_end=loop_end;
+            }
+        }
         decoded.sample_rate=result.sample_rate;
         decoded.volume=static_cast<std::uint8_t>(
             static_cast<std::uint32_t>(instrument_volume)*view.u8(sound+13U)/127U);

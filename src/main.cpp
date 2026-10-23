@@ -172,6 +172,20 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             const auto* player=session.units().get(*active_player);
             if (player==nullptr) throw std::runtime_error("the player tank handle became stale");
             battletanx::sync_player_tank_from_unit(tank,*player);
+            const auto vehicle_audio=battletanx::vehicle_sound_mix(
+                player->velocity_x,player->velocity_z,
+                static_cast<float>(campaign.sfx_volume)/7.0F);
+            platform->set_looping_sound(0U,0x10U,0.0F,
+                                        vehicle_audio.engine_gain,vehicle_audio.engine_pitch);
+            if (vehicle_audio.skid_gain>0.0F) {
+                platform->set_looping_sound(1U,0x12U,0.0F,
+                                            vehicle_audio.skid_gain,1.0F);
+            } else {
+                platform->stop_looping_sound(1U);
+            }
+        } else {
+            platform->stop_looping_sound(0U);
+            platform->stop_looping_sound(1U);
         }
         terrain_sample=terrain.sample(tank.x,tank.z);
         if (terrain_sample) tank.y=terrain_sample->height;

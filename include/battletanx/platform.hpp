@@ -23,6 +23,9 @@ class Platform {
     virtual void set_sound_bank(const SoundBank& sounds)=0;
     virtual void set_music_track(const MusicTrack& music,float gain)=0;
     virtual void play_sound(std::uint16_t sound_id,float pan=0.0F,float gain=1.0F)=0;
+    virtual void set_looping_sound(std::size_t channel,std::uint16_t sound_id,
+                                   float pan,float gain,float pitch)=0;
+    virtual void stop_looping_sound(std::size_t channel)=0;
 
     static std::unique_ptr<Platform> create(std::string_view title);
     static std::filesystem::path controller_pak_path();

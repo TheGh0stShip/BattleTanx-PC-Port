@@ -173,6 +173,7 @@ class SdlPlatform final : public Platform {
         if (audio_device_!=0U) SDL_LockAudioDevice(audio_device_);
         sounds_=sounds;
         voices_.clear();
+        looping_voices_={};
         if (audio_device_!=0U) SDL_UnlockAudioDevice(audio_device_);
     }
 
@@ -202,6 +203,32 @@ class SdlPlatform final : public Platform {
         voices_.push_back(Voice{sound_id,0U,
                                volume*std::min(1.0F,1.0F-mixed_pan),
                                volume*std::min(1.0F,1.0F+mixed_pan)});
+        SDL_UnlockAudioDevice(audio_device_);
+    }
+
+    void set_looping_sound(std::size_t channel,std::uint16_t sound_id,
+                           float pan,float gain,float pitch) override {
+        if (audio_device_==0U || channel>=looping_voices_.size() ||
+            sound_id>=sounds_.sounds.size() || !std::isfinite(pan) ||
+            !std::isfinite(gain) || !std::isfinite(pitch) || pitch<=0.0F) return;
+        pan=std::clamp(pan,-1.0F,1.0F);
+        gain=std::clamp(gain,0.0F,1.0F);
+        SDL_LockAudioDevice(audio_device_);
+        const PcmSound& sound=sounds_.sounds[sound_id];
+        const float stored_pan=(static_cast<float>(sound.pan)-64.0F)/63.0F;
+        const float mixed_pan=std::clamp(stored_pan+pan,-1.0F,1.0F);
+        const float volume=gain*static_cast<float>(sound.volume)/127.0F;
+        LoopingVoice& voice=looping_voices_[channel];
+        const double cursor=voice.active && voice.sound==sound_id ? voice.cursor : 0.0;
+        voice={sound_id,cursor,volume*std::min(1.0F,1.0F-mixed_pan),
+               volume*std::min(1.0F,1.0F+mixed_pan),pitch,true};
+        SDL_UnlockAudioDevice(audio_device_);
+    }
+
+    void stop_looping_sound(std::size_t channel) override {
+        if (audio_device_==0U || channel>=looping_voices_.size()) return;
+        SDL_LockAudioDevice(audio_device_);
+        looping_voices_[channel]={};
         SDL_UnlockAudioDevice(audio_device_);
     }
 
@@ -273,6 +300,13 @@ class SdlPlatform final : public Platform {
         float left{},right{};
     };
 
+    struct LoopingVoice {
+        std::uint16_t sound{};
+        double cursor{};
+        float left{},right{},pitch{1.0F};
+        bool active{};
+    };
+
     static void audio_callback(void* userdata,Uint8* stream,int length) noexcept {
         static_cast<SdlPlatform*>(userdata)->mix_audio(
             reinterpret_cast<std::int16_t*>(stream),length/static_cast<int>(sizeof(std::int16_t)));
@@ -299,6 +333,18 @@ class SdlPlatform final : public Platform {
                 left+=static_cast<std::int32_t>(sample*voice.left);
                 right+=static_cast<std::int32_t>(sample*voice.right);
             }
+            for (LoopingVoice& voice:looping_voices_) {
+                if (!voice.active || voice.sound>=sounds_.sounds.size()) continue;
+                const PcmSound& sound=sounds_.sounds[voice.sound];
+                if (sound.samples.empty()) continue;
+                const std::size_t cursor=std::min(
+                    static_cast<std::size_t>(voice.cursor),sound.samples.size()-1U);
+                const float sample=static_cast<float>(sound.samples[cursor]);
+                left+=static_cast<std::int32_t>(sample*voice.left);
+                right+=static_cast<std::int32_t>(sample*voice.right);
+                voice.cursor=advance_looping_cursor(voice.cursor,voice.pitch,
+                    sound.samples.size(),sound.loop_start,sound.loop_end);
+            }
             output[frame*2]=static_cast<std::int16_t>(std::clamp(
                 left,static_cast<std::int32_t>(std::numeric_limits<std::int16_t>::min()),
                 static_cast<std::int32_t>(std::numeric_limits<std::int16_t>::max())));
@@ -322,6 +368,7 @@ class SdlPlatform final : public Platform {
     std::size_t music_cursor_{};
     float music_gain_{};
     std::vector<Voice> voices_;
+    std::array<LoopingVoice,2> looping_voices_{};
     std::array<SDL_GameController*,4> controllers_{};
 };
 } // namespace

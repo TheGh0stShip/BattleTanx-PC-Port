@@ -74,6 +74,19 @@ int main() {
         }
         CHECK(rejected);
     }
+    CHECK(std::abs(battletanx::advance_looping_cursor(3.5,1.0F,8U,2U,4U)-2.5)<0.0001);
+    CHECK(std::abs(battletanx::advance_looping_cursor(7.5,1.0F,8U,0U,0U)-0.5)<0.0001);
+    CHECK(battletanx::advance_looping_cursor(2.0,0.0F,8U,0U,8U)==0.0);
+    const auto idle_audio=battletanx::vehicle_sound_mix(0.0F,0.0F,1.0F);
+    CHECK(idle_audio.speed==0.0F);
+    CHECK(idle_audio.engine_gain==0.5F);
+    CHECK(std::abs(idle_audio.engine_pitch-0.8F)<0.0001F);
+    CHECK(idle_audio.skid_gain==0.0F);
+    const auto moving_audio=battletanx::vehicle_sound_mix(80.0F,40.0F,0.5F);
+    CHECK(moving_audio.speed==1.0F);
+    CHECK(moving_audio.engine_gain==0.25F);
+    CHECK(std::abs(moving_audio.engine_pitch-1.8F)<0.0001F);
+    CHECK(moving_audio.skid_gain==0.5F);
     CHECK(battletanx::fixed_rate_tick(0U,30U)==0U);
     CHECK(battletanx::fixed_rate_tick(33333333U,30U)==0U);
     CHECK(battletanx::fixed_rate_tick(33333334U,30U)==1U);
