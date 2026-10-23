@@ -95,13 +95,16 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
     spawn_input.game_kind=wave.game_kind;
     spawn_input.active_player_count=1;
     spawn_input.team_spawns=std::move(team_spawns);
+    const auto launch=battletanx::make_campaign_wave_launch(
+        wave,campaign.carry,campaign.bonus,static_cast<std::uint8_t>(campaign.difficulty),
+        campaign.unit_type);
     for (std::size_t owner=0U; owner<battletanx::spawn_owner_count; ++owner) {
         auto& setup=spawn_input.owners[owner];
         setup.present=owner<static_cast<std::size_t>(wave.owner_count);
         setup.computer=owner!=0U;
         setup.team=static_cast<std::uint8_t>(wave.owners[owner].team);
         setup.difficulty=static_cast<std::uint8_t>(campaign.difficulty);
-        const auto kind=static_cast<std::uint8_t>(owner==0U ? campaign.unit_type
+        const auto kind=static_cast<std::uint8_t>(owner==0U ? launch.player_unit_kind
                                                             : wave.owners[owner].unit_kind);
         setup.lineup.fill(kind);
         setup.lineup_count=static_cast<std::uint8_t>(setup.lineup.size());
@@ -136,7 +139,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             [owner](const battletanx::PlannedUnit& unit) { return unit.owner==owner; }));
         const float scale=spawn_plan->owners[owner].human_scale.value_or(
             battletanx::retail::human_scale_default);
-        const auto group=std::min<std::size_t>(static_cast<std::size_t>(campaign.difficulty),
+        const auto group=std::min<std::size_t>(static_cast<std::size_t>(launch.skill_group),
                                                battletanx::campaign_skill_groups-1U);
         const auto& skill=wave.owners[owner].skills[group];
         battletanx::AiProfile profile;
@@ -152,7 +155,8 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             std::max<std::uint8_t>(count,1U),
             static_cast<std::int16_t>(std::max(spawn_plan->owners[owner].reserve,0)),false,
             scale,scale,wave.game_kind==3 || wave.game_kind==6,
-            battletanx::owner_difficulty_from_profile(profile)});
+            battletanx::owner_difficulty_from_profile(profile),
+            owner==0U ? launch.player_score : wave.owners[owner].initial_score});
         session.set_spawner_budget(
             static_cast<std::uint8_t>(owner),spawn_plan->owners[owner].reserve);
         if (!spawn_plan->respawn_points[owner].points.empty()) {

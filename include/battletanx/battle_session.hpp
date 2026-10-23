@@ -60,6 +60,7 @@ struct OwnerSetup {
     float damage_scale{retail::human_scale_default};
     bool objective_base{};
     std::optional<OwnerDifficulty> difficulty{};
+    std::int32_t initial_score{};
 };
 
 struct UnitSpawn {

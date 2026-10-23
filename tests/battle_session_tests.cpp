@@ -439,6 +439,17 @@ RUNTIME_TEST(player_collects_secondary_weapon_pickup_in_session) {
     return true;
 }
 
+RUNTIME_TEST(owner_setup_applies_campaign_carry_score) {
+    BattleSession session(config_with_seed(0x6161U),angles(),open_ground_unit_motion(angles()));
+    OwnerSetup setup;
+    setup.team=0U;
+    setup.computer=false;
+    setup.initial_score=4321;
+    session.add_owner(0U,setup);
+    REQUIRE(session.owners()[0].score==4321);
+    return true;
+}
+
 RUNTIME_TEST(kill_race_uses_destroy_events_and_ends_at_seven) {
     SessionConfig config=config_with_seed(9U);
     config.mission.game_kind=9U;

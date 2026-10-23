@@ -192,6 +192,7 @@ void BattleSession::add_owner(std::uint8_t index,const OwnerSetup& setup) {
     owner.respawn_enabled=setup.respawn_enabled;
     owner.armor_scale=setup.armor_scale;
     owner.damage_scale=setup.damage_scale;
+    owner.score=setup.initial_score;
     objective_bases_[index]=setup.objective_base;
     if (setup.difficulty) campaign_ai_.set_owner_difficulty(index,*setup.difficulty);
 }
