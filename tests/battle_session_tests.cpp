@@ -85,7 +85,7 @@ Outcome run(Battle& battle,std::int32_t max_frames,InputFor input_for) {
 }
 
 constexpr const char* expected_battle_checksum=
-    "bf3ff6c587b6d6cdaa06b9ac1650e8756e60b6e9091a9774bde7ab47f37f468b";
+    "0077e5464fce8766354a837cea19ac3aef16fab07b2d3ebc89c0c336341d3dc0";
 } // namespace
 
 RUNTIME_TEST(headless_battle_player_destroys_enemy_and_succeeds) {
@@ -230,6 +230,68 @@ RUNTIME_TEST(player_collects_health_pickup_during_battle) {
     for (const GameplayEvent& e : battle.session.gameplay_events()) event|=e.kind==GameplayEventKind::pickup_collected;
     for (const SoundEvent& e : battle.session.sound_events()) sound|=e.sound_id==retail::sound_pickup;
     REQUIRE(event && sound);
+    return true;
+}
+
+RUNTIME_TEST(kill_race_uses_destroy_events_and_ends_at_seven) {
+    SessionConfig config=config_with_seed(9U);
+    config.mission.game_kind=9U;
+    BattleSession session(config,angles(),open_ground_unit_motion(angles()));
+    session.add_owner(0U,OwnerSetup{0U,false,1U,0,false});
+    session.add_owner(1U,OwnerSetup{1U,true,7U,0,false});
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,0U,0.0F,0.0F,0U,0U});
+    for (std::uint8_t i=0U; i<7U; ++i) {
+        const EntityId enemy=*session.spawn_unit(UnitSpawn{
+            retail::UnitKind::tank,1U,static_cast<float>(i)*200.0F,1000.0F,0U,0U});
+        session.units().get(enemy)->flags=retail::flag_instant_death;
+        REQUIRE(session.apply_damage(enemy,1,0U,false)==DamageResult::destroyed);
+    }
+    session.mission().force_state(MatchState::live,0);
+    session.step(SessionInput{});
+    REQUIRE(session.objective()!=nullptr);
+    REQUIRE(session.objective()->kill_counter(0U)==7);
+    REQUIRE(session.mission().state()==MatchState::result_delay);
+    for (int i=0; i<90; ++i) session.step(SessionInput{});
+    REQUIRE(session.mission().state()==MatchState::result_banner);
+    REQUIRE(session.mission().result(0U)==OwnerResult::won);
+    return true;
+}
+
+RUNTIME_TEST(queen_rescue_contact_completes_kind_four) {
+    SessionConfig config=config_with_seed(4U);
+    config.mission.game_kind=4U;
+    BattleSession session(config,angles(),open_ground_unit_motion(angles()));
+    session.add_owner(0U,OwnerSetup{0U,false,1U,0,false});
+    session.add_owner(1U,OwnerSetup{1U,true,1U,0,false});
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,0U,0.0F,0.0F,0U,0U});
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,1U,0.0F,1000.0F,0U,0U});
+    session.mission().force_state(MatchState::live,0);
+    REQUIRE(session.queen_contact(0U)==ObjectiveEventStatus::applied);
+    session.step(SessionInput{});
+    REQUIRE(session.mission().state()==MatchState::result_banner);
+    REQUIRE(session.mission().phase()==MissionPhase::succeeded);
+    return true;
+}
+
+RUNTIME_TEST(queen_capture_moves_between_team_bases) {
+    SessionConfig config=config_with_seed(3U);
+    config.mission.game_kind=3U;
+    BattleSession session(config,angles(),open_ground_unit_motion(angles()));
+    OwnerSetup player{0U,false,1U,0,false};
+    player.objective_base=true;
+    OwnerSetup enemy{1U,true,1U,0,false};
+    enemy.objective_base=true;
+    session.add_owner(0U,player);
+    session.add_owner(1U,enemy);
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,0U,0.0F,0.0F,0U,0U});
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,1U,0.0F,1000.0F,0U,0U});
+    session.mission().force_state(MatchState::live,0);
+    REQUIRE(session.queen_taken(1U,0U)==ObjectiveEventStatus::applied);
+    REQUIRE(session.queen_stored(0U)==ObjectiveEventStatus::applied);
+    session.step(SessionInput{});
+    REQUIRE(session.objective()->team_queens(0U)==2U);
+    REQUIRE(session.mission().state()==MatchState::result_banner);
+    REQUIRE(session.mission().phase()==MissionPhase::succeeded);
     return true;
 }
 

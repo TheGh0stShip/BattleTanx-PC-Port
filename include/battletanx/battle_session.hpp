@@ -5,6 +5,7 @@
 #include "battletanx/enemy_control.hpp"
 #include "battletanx/level.hpp"
 #include "battletanx/mission_state.hpp"
+#include "battletanx/objective_runtime.hpp"
 #include "battletanx/pickup_runtime.hpp"
 #include "battletanx/projectile_runtime.hpp"
 #include "battletanx/state_hash.hpp"
@@ -46,6 +47,7 @@ struct OwnerSetup {
     bool respawn_enabled{};
     float armor_scale{retail::human_scale_default};
     float damage_scale{retail::human_scale_default};
+    bool objective_base{};
 };
 
 struct UnitSpawn {
@@ -83,6 +85,11 @@ public:
     [[nodiscard]] std::span<const PickupRecord> pickups() const noexcept { return pickups_; }
     // Damage from a source outside the session's own shells (splash, contact).
     DamageResult apply_damage(EntityId unit,std::int32_t amount,std::uint8_t attacker,bool direct);
+    ObjectiveEventStatus queen_taken(std::uint8_t holder_team,std::uint8_t collector_team);
+    ObjectiveEventStatus queen_stored(std::uint8_t base_team);
+    ObjectiveEventStatus queen_contact(std::uint8_t owner);
+    ObjectiveEventStatus marker_contact(std::uint8_t owner);
+    ObjectiveEventStatus self_destruct(std::uint8_t owner);
 
     // One 30 Hz tick. Order (see the handoff notes for evidence):
     // 1. release units destroyed on an earlier tick
@@ -97,7 +104,11 @@ public:
 
     [[nodiscard]] std::span<const GameplayEvent> gameplay_events() const noexcept { return events_.events(); }
     [[nodiscard]] std::span<const SoundEvent> sound_events() const noexcept { return sounds_.events(); }
-    void clear_events() noexcept { events_.clear(); sounds_.clear(); }
+    void clear_events() noexcept {
+        events_.clear();
+        sounds_.clear();
+        objective_event_cursor_=0U;
+    }
 
     [[nodiscard]] std::int32_t tick() const noexcept { return tick_; }
     [[nodiscard]] const UnitPool& units() const noexcept { return units_; }
@@ -108,6 +119,9 @@ public:
     [[nodiscard]] MissionState& mission() noexcept { return mission_; }
     [[nodiscard]] const RetailRandom& rng() const noexcept { return rng_; }
     [[nodiscard]] RetailRandom& rng() noexcept { return rng_; }
+    [[nodiscard]] const ObjectiveRuntime* objective() const noexcept {
+        return objective_ ? &*objective_ : nullptr;
+    }
     [[nodiscard]] std::optional<EntityId> owner_unit(std::uint8_t owner) const;
 
     // Explicit big-endian serialization of all simulation state.
@@ -120,6 +134,8 @@ private:
     void release_destroyed_units();
     void spawn_due_respawns();
     void update_pickup_state();
+    void initialize_objective();
+    void update_objective();
 
     SessionConfig config_;
     AngleTable angles_;
@@ -128,14 +144,17 @@ private:
     UnitPool units_;
     ShellPool shells_;
     std::array<OwnerRecord,owner_capacity> owners_{};
+    std::array<bool,owner_capacity> objective_bases_{};
     std::array<std::optional<RespawnPoint>,owner_capacity> respawn_points_{};
     std::vector<PickupRecord> pickups_;
     std::optional<PickupWeights> pickup_weights_;
     MissionState mission_;
+    std::optional<ObjectiveRuntime> objective_;
     EnemyController enemy_;
     RetailRandom rng_;
     GameplayEventQueue events_{1024U};
     SoundEventQueue sounds_{1024U};
+    std::size_t objective_event_cursor_{};
     std::int32_t tick_{};
 };
 

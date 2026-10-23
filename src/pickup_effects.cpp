@@ -210,7 +210,9 @@ SpawnGrantResult grant_spawn_weapon(UnitRecord& unit,OwnerRecord& owner,std::uin
     std::optional<std::uint8_t> kind;
     if (event==23U) return result;
     if (event==22U) kind=spawn_grant_random_kind(rng.next_u32());
-    else if (event==1U) { if (unit.primary && options.tick<=0) kind=1U; }
+    else if (event==1U) {
+        if (unit.primary && options.tick<=0) kind=static_cast<std::uint8_t>(1U);
+    }
     else kind=static_cast<std::uint8_t>(event);
     if (!kind) return result;
     PickupEffectOptions silent=options;

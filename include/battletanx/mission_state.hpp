@@ -31,6 +31,10 @@ struct MissionConfig {
     std::int32_t result_frames{90};   // states 5 and 6
     std::int32_t round_over_frames{2000};
     std::int32_t respawn_delay_ticks{30}; // owner +0x304 initial value
+    // BattleSession enables this when ObjectiveRuntime owns the retail
+    // game-kind result rules. MissionState then retains presentation timing,
+    // pause, squad liveness and respawns without evaluating a second outcome.
+    bool external_objective{};
 };
 
 struct RespawnRequest {
@@ -57,6 +61,7 @@ public:
     [[nodiscard]] std::int32_t live_tick() const noexcept { return live_tick_; }
     [[nodiscard]] std::int32_t elapsed_ticks() const noexcept { return elapsed_ticks_; }
     [[nodiscard]] OwnerResult result(std::size_t owner) const noexcept { return results_[owner]; }
+    [[nodiscard]] bool squad_alive(std::size_t owner) const noexcept { return squad_alive_[owner]; }
     [[nodiscard]] std::int32_t respawn_due_tick(std::size_t owner) const noexcept { return respawn_at_[owner]; }
     [[nodiscard]] const MissionConfig& config() const noexcept { return config_; }
 
@@ -67,6 +72,12 @@ public:
     // Kinds 3 and 6 end when func_800A6798 finds a goal slot; the writer of
     // that goal (D_802DF340/D_802DF344) is not recovered, so it is signalled.
     void set_objective_reached() noexcept { objective_reached_=true; }
+    // Applies an ObjectiveRuntime decision and copies its authoritative owner
+    // results. This is deliberately value-based to keep mission timing
+    // independent of the objective implementation.
+    void apply_external_objective(MatchState next,
+                                  const std::array<OwnerResult,owner_capacity>& results,
+                                  std::int32_t tick,GameplayEventQueue& events);
 
 private:
     void advance_state(std::array<OwnerRecord,owner_capacity>& owners,const UnitPool& units,

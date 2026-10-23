@@ -71,6 +71,28 @@ void MissionState::step(std::array<OwnerRecord,owner_capacity>& owners,const Uni
     }
 }
 
+void MissionState::apply_external_objective(
+    MatchState next,const std::array<OwnerResult,owner_capacity>& results,
+    std::int32_t tick,GameplayEventQueue& events) {
+    results_=results;
+    if (next==MatchState::live || next==state_) return;
+    state_=next;
+    if (next==MatchState::result_banner) {
+        frames_=config_.result_frames;
+        if (!terminal_reported_) {
+            terminal_reported_=true;
+            GameplayEvent event;
+            event.kind=results_[0]==OwnerResult::won ? GameplayEventKind::mission_succeeded
+                                                     : GameplayEventKind::mission_failed;
+            event.tick=tick;
+            event.owner=0U;
+            events.push(event);
+        }
+    } else if (next==MatchState::result_delay) {
+        frames_=config_.result_frames;
+    }
+}
+
 void MissionState::advance_state(std::array<OwnerRecord,owner_capacity>& owners,const UnitPool& units,
                                  std::int32_t tick,bool start_pressed,bool advance) {
     switch (state_) {
@@ -81,12 +103,28 @@ void MissionState::advance_state(std::array<OwnerRecord,owner_capacity>& owners,
         if (advance) { state_=MatchState::countdown; frames_=config_.countdown_unit*5; }
         return;
     case MatchState::countdown:
-        if (--frames_<=0) { state_=MatchState::live; live_tick_=tick; }
+        if (--frames_<=0) {
+            state_=MatchState::live;
+            live_tick_=tick;
+            if (config_.external_objective) {
+                for (std::size_t i=0U; i<owner_capacity; ++i) {
+                    if (!owners[i].present) continue;
+                    squad_alive_[i]=update_squad(i,owners[i],units,tick);
+                }
+            }
+        }
         return;
     case MatchState::paused:
         if (start_pressed) state_=MatchState::live;
         return;
     case MatchState::result_delay:
+        if (config_.external_objective) {
+            for (std::size_t i=0U; i<owner_capacity; ++i) {
+                if (!owners[i].present) continue;
+                squad_alive_[i]=update_squad(i,owners[i],units,tick);
+            }
+            return;
+        }
         if (--frames_<=0) {
             for (std::size_t i=0U; i<owner_capacity; ++i) {
                 if (!owners[i].present || results_[i]!=OwnerResult::playing) continue;
@@ -121,6 +159,8 @@ void MissionState::advance_state(std::array<OwnerRecord,owner_capacity>& owners,
         if (!teams[team]) { teams[team]=true; ++team_count; }
     }
     if (start_pressed) { state_=MatchState::paused; return; }
+
+    if (config_.external_objective) return;
 
     const std::uint32_t kind=config_.game_kind;
     if (kind==3U || kind==6U) {

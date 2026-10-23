@@ -135,6 +135,8 @@ BattleSession::BattleSession(SessionConfig config,const AngleTable& angles,UnitM
                              WorldCollision world)
     : config_(config),angles_(angles),motion_(std::move(motion)),world_(std::move(world)),
       mission_(config.mission),enemy_(config.enemy),rng_(config.rng_seed) {
+    config_.mission.external_objective=true;
+    mission_=MissionState(config_.mission);
     config_.combat.game_mode=config_.mission.game_kind;
     config_.pickups.game_mode=static_cast<std::int32_t>(config_.mission.game_kind);
     pickups_.reserve(pickup_capacity);
@@ -143,6 +145,7 @@ BattleSession::BattleSession(SessionConfig config,const AngleTable& angles,UnitM
 
 void BattleSession::add_owner(std::uint8_t index,const OwnerSetup& setup) {
     if (index>=owner_capacity) throw std::out_of_range("owner index exceeds the four retail owner records");
+    if (objective_) throw std::logic_error("owners cannot change after objective initialization");
     OwnerRecord& owner=owners_[index];
     owner=OwnerRecord{};
     owner.present=true;
@@ -153,6 +156,7 @@ void BattleSession::add_owner(std::uint8_t index,const OwnerSetup& setup) {
     owner.respawn_enabled=setup.respawn_enabled;
     owner.armor_scale=setup.armor_scale;
     owner.damage_scale=setup.damage_scale;
+    objective_bases_[index]=setup.objective_base;
 }
 
 std::optional<EntityId> BattleSession::spawn_unit(const UnitSpawn& spawn) {
@@ -206,6 +210,32 @@ DamageResult BattleSession::apply_damage(EntityId unit,std::int32_t amount,std::
                                          bool direct) {
     CombatContext combat=combat_context();
     return apply_unit_damage(combat,unit,amount,attacker,direct);
+}
+
+ObjectiveEventStatus BattleSession::queen_taken(std::uint8_t holder_team,
+                                                std::uint8_t collector_team) {
+    initialize_objective();
+    return objective_->on_queen_taken(holder_team,collector_team);
+}
+
+ObjectiveEventStatus BattleSession::queen_stored(std::uint8_t base_team) {
+    initialize_objective();
+    return objective_->on_queen_stored(base_team);
+}
+
+ObjectiveEventStatus BattleSession::queen_contact(std::uint8_t owner) {
+    initialize_objective();
+    return objective_->on_queen_contact(owner);
+}
+
+ObjectiveEventStatus BattleSession::marker_contact(std::uint8_t owner) {
+    initialize_objective();
+    return objective_->on_marker_contact(owner);
+}
+
+ObjectiveEventStatus BattleSession::self_destruct(std::uint8_t owner) {
+    initialize_objective();
+    return objective_->on_self_destruct(owner);
 }
 
 std::optional<EntityId> BattleSession::owner_unit(std::uint8_t owner) const {
@@ -275,6 +305,42 @@ void BattleSession::spawn_due_respawns() {
     mission_.clear_respawns();
 }
 
+void BattleSession::initialize_objective() {
+    if (objective_) return;
+    ObjectiveConfig objective_config;
+    objective_config.game_kind=config_.mission.game_kind;
+    objective_config.result_frames=config_.mission.result_frames;
+    for (std::size_t i=0U; i<owner_capacity; ++i) {
+        objective_config.owners[i]=ObjectiveOwner{
+            owners_[i].present,owners_[i].computer,owners_[i].team,
+            static_cast<std::uint8_t>(objective_bases_[i] ? 1U : 0U)};
+    }
+    ObjectiveCreateResult created=ObjectiveRuntime::create(objective_config);
+    if (!created.runtime) {
+        throw std::runtime_error("invalid battle objective: "+
+                                 std::string(to_string(created.error)));
+    }
+    objective_=std::move(*created.runtime);
+}
+
+void BattleSession::update_objective() {
+    initialize_objective();
+    const auto emitted=events_.events();
+    if (objective_event_cursor_>emitted.size()) objective_event_cursor_=0U;
+    for (std::size_t i=objective_event_cursor_; i<emitted.size(); ++i) {
+        (void)objective_->on_event(emitted[i]);
+    }
+    objective_event_cursor_=emitted.size();
+    ObjectiveInput input;
+    input.match=mission_.state();
+    input.tick=tick_;
+    for (std::size_t i=0U; i<owner_capacity; ++i) input.squad_alive[i]=mission_.squad_alive(i);
+    const ObjectiveResult result=objective_->step(input);
+    std::array<OwnerResult,owner_capacity> owner_results{};
+    for (std::size_t i=0U; i<owner_capacity; ++i) owner_results[i]=objective_->result(i);
+    mission_.apply_external_objective(result.next_state,owner_results,tick_,events_);
+}
+
 void BattleSession::step(const SessionInput& input) {
     if (mission_.simulation_running() && mission_.state()!=MatchState::paused) {
         release_destroyed_units();
@@ -285,6 +351,7 @@ void BattleSession::step(const SessionInput& input) {
         update_pickup_state();
     }
     mission_.step(owners_,units_,tick_,input.start_pressed,input.advance,events_);
+    update_objective();
     spawn_due_respawns();
     if (mission_.state()!=MatchState::paused) ++tick_;
 }
@@ -300,6 +367,12 @@ void BattleSession::serialize(StateWriter& writer) const {
         writer.u8(static_cast<std::uint8_t>(mission_.result(i)));
         writer.s32(mission_.respawn_due_tick(i));
         write_owner(writer,owners_[i]);
+    }
+    if (objective_) {
+        writer.boolean(true);
+        objective_->serialize(writer);
+    } else {
+        writer.boolean(false);
     }
     for (std::size_t slot=0U; slot<unit_capacity; ++slot) {
         writer.boolean(units_.slot_occupied(slot));

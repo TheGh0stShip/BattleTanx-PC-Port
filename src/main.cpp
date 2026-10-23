@@ -123,7 +123,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             spawn_plan->owners[owner].team,spawn_input.owners[owner].computer,
             std::max<std::uint8_t>(count,1U),
             static_cast<std::int16_t>(std::max(spawn_plan->owners[owner].reserve,0)),false,
-            scale,scale});
+            scale,scale,wave.game_kind==3 || wave.game_kind==6});
         if (!spawn_plan->respawn_points[owner].points.empty()) {
             const auto& point=spawn_plan->respawn_points[owner].points.front();
             session.set_respawn_point(static_cast<std::uint8_t>(owner),
