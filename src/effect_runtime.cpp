@@ -81,7 +81,7 @@ constexpr std::array<ParticleDef,particle_def_count> defs{{
 constexpr std::uint16_t flag_chain=0x0100U;
 constexpr std::uint8_t status_keep=0U, status_free=2U; // update_active_effect_list results
 // Hash/layout discriminator; there is no deserializer.
-constexpr std::uint8_t effect_serialize_version=2U; // 2: game_tick_, child_serial
+constexpr std::uint8_t effect_serialize_version=3U; // 3: transient beam visuals
 
 bool drawn(EffectKind kind) noexcept { return kind!=EffectKind::script; }
 
@@ -119,6 +119,8 @@ void EffectRuntime::reset() noexcept {
     decal_count_=0U;
     failed_spawns_=0U;
     status_.fill(StatusVisual{});
+    beams_.fill(EffectRenderItem{});
+    beam_count_=0U;
 }
 
 // allocate_effect func_8008AD10: pop the free head, push onto the group's
@@ -295,8 +297,14 @@ EventMapping EffectRuntime::consume(const EffectEvent& event,std::uint16_t clock
                                        .model_slot=models::impact_decal});
         break;
     case EffectEventKind::beam:
-        // TEMPORARY POLICY: the kind-12 beam visual is not a pool effect simulated here.
-        return EventMapping::no_visual;
+        if (beam_count_>=beams_.size()) return EventMapping::pool_exhausted;
+        beams_[beam_count_++]=EffectRenderItem{
+            .item=RenderItemKind::beam,.kind={},.status={},.slot=no_link,.serial=0U,
+            .index=event.variant,.elapsed=0U,.duration=0U,.flags=0U,
+            .model_slot=models::beam,.anchor=event.source,.owner=event.owner,
+            .x=event.x,.y=event.y,.z=event.z,.normal_x=0.0F,.normal_z=0.0F,
+            .angle=event.angle,.length=event.length};
+        return EventMapping::spawned;
     case EffectEventKind::bounce:
         // TEMPORARY POLICY: nuke/grenade bounces spawn no pool visual here; the
         // landing visual arrives as its own trail/impact event.
@@ -474,6 +482,7 @@ void EffectRuntime::collect(EffectRenderQueue& out) const {
         out.push(EffectRenderItem{.item=RenderItemKind::status,.kind={},.status=s.kind,.slot=no_link,.serial=0U,.index=0U,.elapsed=0U,.duration=0U,.flags=0U,.model_slot=s.model_slot,
                                   .anchor=s.subject,.owner=s.owner,.x=s.x,.y=s.y,.z=s.z,.normal_x=0.0F,.normal_z=0.0F});
     }
+    for (std::uint8_t i=0U; i<beam_count_; ++i) out.push(beams_[i]);
 }
 
 std::uint16_t EffectRuntime::live_count() const noexcept {
@@ -496,6 +505,13 @@ void EffectRuntime::serialize(StateWriter& w) const {
     w.u8(decal_count_);
     for (const std::int16_t d : decals_) w.s16(d);
     w.u32(failed_spawns_);
+    w.u8(beam_count_);
+    for (std::uint8_t i=0U; i<beam_count_; ++i) {
+        const EffectRenderItem& beam=beams_[i];
+        w.u8(beam.index); w.u8(beam.owner);
+        w.f32(beam.x); w.f32(beam.y); w.f32(beam.z);
+        w.u16(beam.angle); w.f32(beam.length);
+    }
     for (const EffectNode& e : nodes_) {
         w.s16(e.next);
         w.boolean(e.in_use);

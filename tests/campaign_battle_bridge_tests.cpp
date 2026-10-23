@@ -221,6 +221,7 @@ RUNTIME_TEST(bridge_does_not_reconsume_events_left_in_session) {
     const cb::TickReport second=bridge.tick(field.session,idle(1));   // events not cleared
     REQUIRE(first.session_events_consumed==pending);
     REQUIRE(second.session_events_consumed==field.session.gameplay_events().size()-pending);
+    REQUIRE(second.effect_spawns==0U);
     return true;
 }
 

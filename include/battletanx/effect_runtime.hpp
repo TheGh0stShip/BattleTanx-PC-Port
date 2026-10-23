@@ -36,6 +36,7 @@ inline constexpr std::uint8_t rotating_variant_count=13U;
 inline constexpr std::uint8_t muzzle_flash_def=0x24U;   // spawn_effect_kind_2a_on_owner templateIndex
 inline constexpr std::uint8_t decal_queue_capacity=10U; // spawn_queued_effect_kind_2b
 inline constexpr std::uint16_t model_slot_count=182U;   // D_802D5A30[182] (load_level.c)
+inline constexpr std::uint8_t beam_visual_capacity=64U;
 
 // ---------------------------------------------------------------------------
 // Effect clock. Every pool effect reads read_runtime_counter_pair (func_8007B268)
@@ -90,6 +91,7 @@ inline constexpr std::array<std::array<std::uint8_t,kind_count>,update_group_cou
 // ---------------------------------------------------------------------------
 // Model slot indices into the per-level slot table D_802D5A30[182] (s16).
 namespace models {
+inline constexpr std::uint16_t beam=0x0AU;              // D_802D5A44 (notify_listeners_along_sweep)
 inline constexpr std::uint16_t impact_decal=3U;       // D_802D5A36 (get_impact_model_part, func_8008CED0)
 inline constexpr std::uint16_t wreck_type0=0x15U;     // draw_kind_selected_level_model func_800A05A0 (kind 26)
 inline constexpr std::uint16_t wreck_type1=0x23U;     //   type 1, variant 0
@@ -236,7 +238,7 @@ struct StatusVisual {
     float x{}, y{}, z{};
 };
 
-enum class RenderItemKind : std::uint8_t { pool_effect, status };
+enum class RenderItemKind : std::uint8_t { pool_effect, status, beam };
 static_assert(std::is_same_v<std::underlying_type_t<RenderItemKind>,std::uint8_t>);
 
 struct EffectRenderItem {
@@ -254,6 +256,8 @@ struct EffectRenderItem {
     std::uint8_t owner{no_owner};
     float x{}, y{}, z{};
     float normal_x{}, normal_z{}; // decal only
+    std::uint16_t angle{};         // beam only
+    float length{};                // beam only
 };
 using EffectRenderQueue=EventQueue<EffectRenderItem>;
 
@@ -323,6 +327,10 @@ public:
     // Same, with the decal arguments EffectEvent does not carry (impact_decal only).
     EventMapping consume(const EffectEvent& event,const DecalParams& decal,std::uint16_t clock) noexcept;
     void consume_all(const EffectEventQueue& queue,std::uint16_t clock) noexcept;
+    // Host-frame transient visuals are replaced before each simulation tick.
+    // A beam is an allocated retail effect with a short countdown; retaining
+    // the latest tick makes it visible without adding it to the script pool.
+    void clear_transient_visuals() noexcept { beam_count_=0U; }
 
     // update_active_effect_list: merge pending, walk the walked active list,
     // merge again. Nodes spawned during the walk are first updated next call.
@@ -375,6 +383,8 @@ private:
     std::uint8_t decal_count_{};
     std::uint32_t failed_spawns_{};
     std::array<StatusVisual,status_visual_capacity> status_{};
+    std::array<EffectRenderItem,beam_visual_capacity> beams_{};
+    std::uint8_t beam_count_{};
 };
 
 } // namespace battletanx::effects

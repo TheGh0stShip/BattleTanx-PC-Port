@@ -291,6 +291,7 @@ private:
     std::vector<queen_world::MarkerHandle> marker_handles_;
     std::vector<queen_world::QueenEvent> routed_;   // events routed during the last tick
     std::size_t session_event_cursor_{};
+    std::size_t effect_event_cursor_{};
     std::uint32_t ticks_{};
 };
 

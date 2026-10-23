@@ -725,6 +725,15 @@ WaveRunResult run_platform_diagnostic(battletanx::Platform& platform,
             if (set>=assets.sets().size() || assets.set(set).lod_count==0U) continue;
             const auto ground=terrain.sample(effect.x,effect.z);
             const float y=effect.y!=0.0F ? effect.y : (ground ? ground->height : 0.0F);
+            if (effect.item==battletanx::effects::RenderItemKind::beam) {
+                auto transform=battletanx::yaw_translation_matrix(
+                    effect.angle,effect.x,y,effect.z,angles);
+                transform[8U]*=effect.length;
+                transform[9U]*=effect.length;
+                transform[10U]*=effect.length;
+                draw.items.push_back({set,transform,3U,0});
+                continue;
+            }
             const auto angle=static_cast<std::uint16_t>(
                 game_tick*0x500U+static_cast<std::uint16_t>(effect.index)*0x800U);
             draw.items.push_back({set,

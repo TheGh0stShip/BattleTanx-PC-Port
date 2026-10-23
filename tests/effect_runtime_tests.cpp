@@ -141,6 +141,32 @@ RUNTIME_TEST(rotating_variant_and_unsupported_variant) {
     return true;
 }
 
+RUNTIME_TEST(beam_event_is_a_bounded_transient_render_item) {
+    EffectRuntime fx;
+    EffectEvent beam;
+    beam.kind=EffectEventKind::beam;
+    beam.variant=8U;
+    beam.owner=2U;
+    beam.x=10.0F; beam.y=20.0F; beam.z=30.0F;
+    beam.angle=0x4000U;
+    beam.length=1234.0F;
+    REQUIRE(fx.consume(beam,0U)==EventMapping::spawned);
+    EffectRenderQueue queue(4U);
+    fx.collect(queue);
+    REQUIRE(queue.events().size()==1U);
+    const auto& item=queue.events().front();
+    REQUIRE(item.item==RenderItemKind::beam);
+    REQUIRE(item.model_slot==models::beam);
+    REQUIRE(item.index==8U && item.owner==2U);
+    REQUIRE(item.x==10.0F && item.y==20.0F && item.z==30.0F);
+    REQUIRE(item.angle==0x4000U && item.length==1234.0F);
+    fx.clear_transient_visuals();
+    queue.clear();
+    fx.collect(queue);
+    REQUIRE(queue.events().empty());
+    return true;
+}
+
 RUNTIME_TEST(decal_queue_evicts_oldest_and_stops_its_smoke) {
     auto fx=make();
     std::int16_t first=no_link;
@@ -385,7 +411,7 @@ RUNTIME_TEST(serialization_starts_with_version) {
     auto fx=make();
     StateWriter w;
     fx->serialize(w);
-    REQUIRE(!w.bytes().empty() && w.bytes()[0]==2U);
+    REQUIRE(!w.bytes().empty() && w.bytes()[0]==3U);
     return true;
 }
 

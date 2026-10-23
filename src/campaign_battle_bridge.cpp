@@ -643,13 +643,10 @@ void Bridge::consume_session_events(BattleSession& session,std::uint16_t clock,s
             spawned=effects_.spawn_unit_destruction(type,event.x,event.y,event.z,clock);
             break;
         }
+        // Projectile visuals are supplied by BattleSession::effect_events(),
+        // which retains the weapon-specific variant and exact muzzle point.
         case GameplayEventKind::projectile_impact:
-            // TEMPORARY POLICY: every shell impact uses the cannon impact
-            // variant; weapon_runtime's EffectEvent stream is not exposed (R8).
-            spawned=effects_.spawn_script(effects::variant::impact_cannon,event.x,event.y,event.z,clock);
-            break;
         case GameplayEventKind::weapon_fired:
-            spawned=effects_.spawn_muzzle_flash(event.subject,event.owner,event.x,event.y,event.z,clock);
             break;
         default: break;
         }
@@ -659,14 +656,23 @@ void Bridge::consume_session_events(BattleSession& session,std::uint16_t clock,s
     report.session_events_at_capacity=events.size()>=session_event_capacity;
     route_queen_events(session,report);
     mark(report,Phase::effects_update);
-    // Oscillators run on the game tick (low 16 bits); scripts run on clock.
+    // Existing effects update before effects allocated by this tick, matching
+    // the retail pending-list rule that newly spawned effects wait one frame.
     effects_.update(clock,game_tick);
     effects_.tick_status();
+    const std::span<const EffectEvent> effect_events=session.effect_events();
+    if (effect_event_cursor_>effect_events.size()) effect_event_cursor_=0U;
+    for (std::size_t i=effect_event_cursor_; i<effect_events.size(); ++i) {
+        if (effects_.consume(effect_events[i],clock)==effects::EventMapping::spawned)
+            bump(report.effect_spawns);
+    }
+    effect_event_cursor_=effect_events.size();
 }
 
 void Bridge::clear_events(BattleSession& session) noexcept {
     session.clear_events();
     session_event_cursor_=0U;
+    effect_event_cursor_=0U;
     deployable_events_.clear();
 }
 
@@ -684,6 +690,7 @@ std::vector<queen_world::QueenView> Bridge::queen_views() const {
 TickReport Bridge::tick(BattleSession& session,const SessionInput& input) {
     TickReport report;
     routed_.clear();
+    effects_.clear_transient_visuals();
     if (session_event_cursor_>session.gameplay_events().size()) session_event_cursor_=0U;
     // One effect clock per tick (CONFIRMED derivation, effect_runtime.hpp
     // effect_clock::for_game_tick), sampled before session.step and shared by
