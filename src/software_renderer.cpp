@@ -20,6 +20,8 @@ struct ClipVertex {
     float u{},v{},r{},g{},b{},a{};
 };
 
+using ClipPolygon=std::array<ClipVertex,12>;
+
 ClipVertex interpolate_clip(const ClipVertex& first,const ClipVertex& second,float amount) {
     const auto mix=[&](float left,float right) { return left+(right-left)*amount; };
     return {mix(first.x,second.x),mix(first.y,second.y),mix(first.z,second.z),
@@ -28,14 +30,15 @@ ClipVertex interpolate_clip(const ClipVertex& first,const ClipVertex& second,flo
             mix(first.a,second.a)};
 }
 
-std::size_t clip_near_plane(const std::array<ClipVertex,3>& input,
-                            std::array<ClipVertex,4>& output) {
+template<typename Distance>
+std::size_t clip_plane(const ClipPolygon& input,std::size_t input_count,
+                       ClipPolygon& output,Distance distance) {
     std::size_t count=0U;
-    for (std::size_t index=0U; index<input.size(); ++index) {
+    for (std::size_t index=0U; index<input_count; ++index) {
         const auto& current=input[index];
-        const auto& next=input[(index+1U)%input.size()];
-        const float current_distance=current.z+current.w;
-        const float next_distance=next.z+next.w;
+        const auto& next=input[(index+1U)%input_count];
+        const float current_distance=distance(current);
+        const float next_distance=distance(next);
         const bool current_inside=current_distance>=0.0F;
         const bool next_inside=next_distance>=0.0F;
         if (current_inside) output[count++]=current;
@@ -44,6 +47,26 @@ std::size_t clip_near_plane(const std::array<ClipVertex,3>& input,
                 current,next,current_distance/(current_distance-next_distance));
         }
     }
+    return count;
+}
+
+std::size_t clip_view_volume(const std::array<ClipVertex,3>& triangle,
+                             ClipPolygon& output) {
+    ClipPolygon first{};
+    ClipPolygon second{};
+    std::copy(triangle.begin(),triangle.end(),first.begin());
+    std::size_t count=triangle.size();
+    const auto apply=[&](auto distance) {
+        count=clip_plane(first,count,second,distance);
+        first.swap(second);
+    };
+    apply([](const ClipVertex& vertex) { return vertex.x+vertex.w; });
+    apply([](const ClipVertex& vertex) { return vertex.w-vertex.x; });
+    apply([](const ClipVertex& vertex) { return vertex.y+vertex.w; });
+    apply([](const ClipVertex& vertex) { return vertex.w-vertex.y; });
+    apply([](const ClipVertex& vertex) { return vertex.z+vertex.w; });
+    apply([](const ClipVertex& vertex) { return vertex.w-vertex.z; });
+    std::copy_n(first.begin(),count,output.begin());
     return count;
 }
 
@@ -141,7 +164,7 @@ void rasterize_triangle(int width,int height,std::vector<std::uint32_t>& color,
     std::array<RasterVertex,3> vertices{};
     for (std::size_t corner=0U; corner<vertices.size(); ++corner) {
         const auto& clip=clip_vertices[corner];
-        if (!std::isfinite(clip.w) || clip.w<=0.000001F || clip.z>clip.w) return;
+        if (!std::isfinite(clip.w) || clip.w<=0.000001F) return;
         const float inverse_w=1.0F/clip.w;
         vertices[corner]={
             (clip.x*inverse_w*0.5F+0.5F)*width,
@@ -215,7 +238,7 @@ std::size_t select_model_lod(std::uint8_t lod_count,float distance_squared) noex
     return distance_squared>1000000.0F ? 1U : 0U;
 }
 
-std::size_t clipped_near_vertex_count(
+std::size_t clipped_view_volume_vertex_count(
     const std::array<std::array<float,4>,3>& triangle) noexcept {
     std::array<ClipVertex,3> input{};
     for (std::size_t index=0U; index<input.size(); ++index) {
@@ -224,8 +247,8 @@ std::size_t clipped_near_vertex_count(
         input[index].z=triangle[index][2];
         input[index].w=triangle[index][3];
     }
-    std::array<ClipVertex,4> output{};
-    return clip_near_plane(input,output);
+    ClipPolygon output{};
+    return clip_view_volume(input,output);
 }
 
 void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
@@ -266,8 +289,8 @@ void SoftwareRenderer::render(const DrawList& list,const ModelAssets& assets) {
                             static_cast<float>(source.a)};
                     }
                     if (!finite) continue;
-                    std::array<ClipVertex,4> polygon{};
-                    const std::size_t vertex_count=clip_near_plane(input,polygon);
+                    ClipPolygon polygon{};
+                    const std::size_t vertex_count=clip_view_volume(input,polygon);
                     for (std::size_t fan=1U; fan+1U<vertex_count; ++fan) {
                         rasterize_triangle(width_,height_,color_,depth_,material,
                             {polygon[0],polygon[fan],polygon[fan+1U]});
