@@ -1,0 +1,236 @@
+#include "battletanx/battle_session.hpp"
+#include "battletanx/campaign_record.hpp"
+#include "battletanx/runtime_math.hpp"
+
+#include "runtime_test_support.hpp"
+
+#include <iostream>
+#include <string>
+
+namespace {
+using namespace battletanx;
+
+SessionConfig config_with_seed(std::uint32_t seed) {
+    SessionConfig config;
+    config.rng_seed=seed;
+    return config;
+}
+
+const AngleTable& angles() {
+    static const AngleTable table=reference_angle_table();
+    return table;
+}
+
+struct Battle {
+    BattleSession session;
+    EntityId player{};
+    EntityId enemy{};
+
+    explicit Battle(float enemy_distance=800.0F)
+        : session(config_with_seed(0x1234U),angles(),
+                  open_ground_unit_motion(angles())) {
+        session.add_owner(0U,OwnerSetup{0U,false,1U,0,false});
+        session.add_owner(1U,OwnerSetup{1U,true,5U,0,false});
+        player=*session.spawn_unit(UnitSpawn{retail::UnitKind::tank,0U,0.0F,0.0F,0U,0U});
+        enemy=*session.spawn_unit(UnitSpawn{retail::UnitKind::tank,1U,0.0F,enemy_distance,0x8000U,0U});
+    }
+};
+
+SessionInput hold_fire(std::int32_t frame) {
+    SessionInput input;
+    input.advance=frame==0;
+    input.drive.fire=true;
+    input.drive.fire_pressed=frame==0;
+    return input;
+}
+
+struct Outcome {
+    std::string checksum;
+    MissionPhase phase{};
+    std::int32_t frames{};
+    std::size_t player_shots{}, enemy_shots{}, impacts{}, destroyed{};
+    std::size_t first_destroyed_index{};
+    bool succeeded_event{}, failed_event{};
+};
+
+template <typename InputFor>
+Outcome run(Battle& battle,std::int32_t max_frames,InputFor input_for) {
+    Outcome outcome;
+    std::size_t index=0U;
+    for (std::int32_t frame=0; frame<max_frames; ++frame) {
+        battle.session.step(input_for(frame));
+        for (const GameplayEvent& event : battle.session.gameplay_events()) {
+            ++index;
+            switch (event.kind) {
+            case GameplayEventKind::weapon_fired:
+                if (event.owner==0U) ++outcome.player_shots; else ++outcome.enemy_shots;
+                break;
+            case GameplayEventKind::projectile_impact: ++outcome.impacts; break;
+            case GameplayEventKind::unit_destroyed:
+                if (outcome.destroyed++==0U) outcome.first_destroyed_index=index;
+                break;
+            case GameplayEventKind::mission_succeeded: outcome.succeeded_event=true; break;
+            case GameplayEventKind::mission_failed: outcome.failed_event=true; break;
+            default: break;
+            }
+        }
+        battle.session.clear_events();
+        outcome.frames=frame+1;
+        const MissionPhase phase=battle.session.mission().phase();
+        if (phase==MissionPhase::succeeded || phase==MissionPhase::failed) break;
+    }
+    outcome.phase=battle.session.mission().phase();
+    outcome.checksum=battle.session.checksum();
+    return outcome;
+}
+
+constexpr const char* expected_battle_checksum=
+    "b987c6b60ebfcdb2285162bd6ea534e01f68a07f4c646e5ffba50e26ceac2942";
+} // namespace
+
+RUNTIME_TEST(headless_battle_player_destroys_enemy_and_succeeds) {
+    Battle battle;
+    const Outcome outcome=run(battle,4000,hold_fire);
+    std::cout << "battle checksum " << outcome.checksum << " frames " << outcome.frames
+              << " player shots " << outcome.player_shots << " enemy shots " << outcome.enemy_shots
+              << " impacts " << outcome.impacts << '\n';
+    REQUIRE(outcome.phase==MissionPhase::succeeded);
+    REQUIRE(outcome.succeeded_event && !outcome.failed_event);
+    REQUIRE(outcome.player_shots>=6U);
+    REQUIRE(outcome.destroyed==1U);
+    REQUIRE(outcome.impacts>=6U);
+    REQUIRE(!battle.session.units().contains(battle.enemy));     // released after destruction
+    const UnitRecord* player=battle.session.units().get(battle.player);
+    REQUIRE(player!=nullptr && player->alive);
+    REQUIRE(player->ammo[1]==70-static_cast<std::int16_t>(outcome.player_shots));
+    REQUIRE(battle.session.owners()[0].kills==1 && battle.session.owners()[0].score==1000);
+    REQUIRE(battle.session.mission().result(0)==OwnerResult::won);
+    return true;
+}
+
+RUNTIME_TEST(headless_battle_checksum_is_stable) {
+    Battle first;
+    Battle second;
+    const Outcome a=run(first,4000,hold_fire);
+    const Outcome b=run(second,4000,hold_fire);
+    REQUIRE(a.checksum==b.checksum);
+    REQUIRE(a.frames==b.frames);
+    REQUIRE(a.checksum==expected_battle_checksum);
+    return true;
+}
+
+RUNTIME_TEST(one_tick_input_change_diverges) {
+    Battle first;
+    Battle second;
+    const Outcome a=run(first,300,hold_fire);
+    const Outcome b=run(second,300,[](std::int32_t frame) {
+        SessionInput input=hold_fire(frame);
+        if (frame==150) input.drive.rotation=80.0F;   // one tick of hull rotation
+        return input;
+    });
+    REQUIRE(a.checksum!=b.checksum);
+    return true;
+}
+
+RUNTIME_TEST(idle_player_is_destroyed_and_mission_fails) {
+    Battle battle;
+    const Outcome outcome=run(battle,6000,[](std::int32_t frame) {
+        SessionInput input;
+        input.advance=frame==0;
+        return input;
+    });
+    REQUIRE(outcome.player_shots==0U);
+    REQUIRE(outcome.enemy_shots>=6U);
+    REQUIRE(outcome.phase==MissionPhase::failed);
+    REQUIRE(outcome.failed_event);
+    REQUIRE(battle.session.mission().result(0)==OwnerResult::eliminated);
+    return true;
+}
+
+RUNTIME_TEST(player_respawns_from_bank_at_respawn_point) {
+    BattleSession session(config_with_seed(7U),angles(),
+                          open_ground_unit_motion(angles()));
+    session.add_owner(0U,OwnerSetup{0U,false,1U,1,false});
+    session.add_owner(1U,OwnerSetup{1U,true,5U,0,false});
+    const EntityId player=*session.spawn_unit(UnitSpawn{retail::UnitKind::tank,0U,0.0F,0.0F,0U,0U});
+    session.spawn_unit(UnitSpawn{retail::UnitKind::tank,1U,0.0F,5000.0F,0U,0U});
+    session.set_respawn_point(0U,RespawnPoint{100.0F,-200.0F,0x4000U});
+    session.mission().force_state(MatchState::live,0);
+    session.units().get(player)->flags=retail::flag_instant_death;
+    session.step(SessionInput{});
+    REQUIRE(session.apply_damage(player,1,1U,false)==DamageResult::destroyed);
+    bool respawned=false;
+    std::int32_t frames=0;
+    while (!respawned && frames<200) {
+        session.step(SessionInput{});
+        for (const GameplayEvent& event : session.gameplay_events()) {
+            if (event.kind==GameplayEventKind::player_respawned) respawned=true;
+        }
+        session.clear_events();
+        ++frames;
+    }
+    REQUIRE(respawned);
+    REQUIRE(frames>=31 && frames<=33);
+    const auto unit=session.owner_unit(0U);
+    REQUIRE(unit && !(*unit==player));
+    REQUIRE(runtime_test::near(session.units().get(*unit)->x,100.0));
+    REQUIRE(session.units().get(*unit)->health==100);
+    REQUIRE(session.owners()[0].respawn_bank[0]==0);
+    REQUIRE(session.mission().phase()==MissionPhase::active);
+    return true;
+}
+
+RUNTIME_TEST(campaign_record_round_trip_after_battle) {
+    Battle battle;
+    const Outcome outcome=run(battle,4000,hold_fire);
+    REQUIRE(outcome.phase==MissionPhase::succeeded);
+    CampaignRecord record=default_campaign_record();
+    record.mission_id=static_cast<std::uint8_t>(record.mission_id+1U);
+    record.carry=battle.session.owners()[0].score;
+    const ControllerPakRecord bytes=serialize_campaign_record(record);
+    REQUIRE(controller_pak_checksum_valid(bytes));
+    const auto parsed=parse_campaign_record(bytes);
+    REQUIRE(parsed && parsed->mission_id==2U && parsed->carry==1000);
+    REQUIRE(serialize_campaign_record(*parsed).bytes==bytes.bytes);
+    return true;
+}
+
+RUNTIME_TEST(paused_session_freezes_tick_and_units) {
+    Battle battle;
+    for (int frame=0; frame<200; ++frame) battle.session.step(hold_fire(frame));
+    const std::int32_t tick=battle.session.tick();
+    SessionInput pause;
+    pause.start_pressed=true;
+    battle.session.step(pause);
+    REQUIRE(battle.session.mission().state()==MatchState::paused);
+    const std::string frozen=battle.session.checksum();
+    for (int frame=0; frame<30; ++frame) battle.session.step(SessionInput{});
+    REQUIRE(battle.session.checksum()==frozen);
+    REQUIRE(battle.session.tick()==tick);
+    battle.session.step(pause);
+    REQUIRE(battle.session.mission().state()==MatchState::live);
+    return true;
+}
+
+RUNTIME_TEST(player_collects_health_pickup_during_battle) {
+    Battle battle(4000.0F);
+    PickupRecord health;
+    health.id=EntityId{0U,1U};
+    health.kind=0U;              // +30% health
+    health.x=0.0F;
+    health.z=0.0F;               // under the player tank
+    REQUIRE(battle.session.add_pickup(health));
+    battle.session.mission().force_state(MatchState::live,0);
+    REQUIRE(battle.session.apply_damage(battle.player,50,1U,false)==DamageResult::survived);
+    battle.session.step(SessionInput{});
+    REQUIRE(battle.session.units().get(battle.player)->health==80);   // 50 + (s32)(100*0.3)
+    REQUIRE(battle.session.pickups()[0].consumed);
+    bool event=false;
+    bool sound=false;
+    for (const GameplayEvent& e : battle.session.gameplay_events()) event|=e.kind==GameplayEventKind::pickup_collected;
+    for (const SoundEvent& e : battle.session.sound_events()) sound|=e.sound_id==retail::sound_pickup;
+    REQUIRE(event && sound);
+    return true;
+}
+
+RUNTIME_TEST_MAIN()

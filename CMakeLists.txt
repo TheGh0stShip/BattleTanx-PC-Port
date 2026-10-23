@@ -94,3 +94,36 @@ add_executable(battletanx_tests tests/core_tests.cpp)
 target_link_libraries(battletanx_tests PRIVATE battletanx_core)
 add_test(NAME battletanx_core COMMAND battletanx_tests)
 
+
+# Native gameplay runtime (renderer- and platform-neutral).
+target_sources(battletanx_core PRIVATE
+    src/battle_session.cpp
+    src/campaign_record.cpp
+    src/combat.cpp
+    src/enemy_control.cpp
+    src/level_spawns.cpp
+    src/mission_state.cpp
+    src/pickup_runtime.cpp
+    src/projectile_runtime.cpp
+    src/runtime_math.cpp
+    src/state_hash.cpp
+    src/unit_runtime.cpp
+)
+require_native_source_target(battletanx_core)
+function(add_runtime_test name)
+    add_executable(${name} tests/${name}.cpp)
+    target_link_libraries(${name} PRIVATE battletanx_core)
+    target_compile_options(${name} PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>
+        $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive->
+    )
+    add_test(NAME ${name} COMMAND ${name})
+endfunction()
+add_runtime_test(runtime_pool_tests)
+add_runtime_test(campaign_record_tests)
+add_runtime_test(combat_tests)
+add_runtime_test(mission_tests)
+add_runtime_test(enemy_tests)
+add_runtime_test(battle_session_tests)
+add_runtime_test(spawner_tests)
+add_runtime_test(pickup_tests)

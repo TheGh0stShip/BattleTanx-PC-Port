@@ -1,6 +1,8 @@
 #include "battletanx/angle.hpp"
+#include "battletanx/battle_session.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/camera.hpp"
+#include "battletanx/campaign_record.hpp"
 #include "battletanx/controller_pak.hpp"
 #include "battletanx/fixed_tick.hpp"
 #include "battletanx/lzari.hpp"
@@ -17,6 +19,7 @@
 #include <chrono>
 #include <cmath>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <optional>
 #include <string_view>
@@ -27,7 +30,9 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::NavigationLevel& navigation,
                              const battletanx::AngleTable& angles,
                              const battletanx::InputBindings& bindings,
-                             const battletanx::ModelAssets& assets) {
+                             const battletanx::ModelAssets& assets,
+                             battletanx::CampaignRecord campaign,
+                             const std::filesystem::path& pak_path) {
     auto platform=battletanx::Platform::create("BattleTanx native source port");
     battletanx::SoftwareRenderer renderer(
         battletanx::native_width,battletanx::native_height);
@@ -35,35 +40,88 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     std::array<battletanx::ControllerPad,4> current{};
     constexpr std::uint32_t ticks_per_second=30U;
     const auto clock_start=std::chrono::steady_clock::now();
-    auto tank=battletanx::spawn_player_tank(world,navigation);
+    const auto player_start=battletanx::spawn_player_tank(world,navigation);
     const auto terrain=battletanx::TerrainSurface::build(world,assets,angles);
-    auto terrain_sample=terrain.sample(tank.x,tank.z);
-    if (terrain_sample) tank.y=terrain_sample->height;
+    battletanx::SessionConfig session_config;
+    session_config.rng_seed=0x42545831U;
+    session_config.combat.unlimited_ammo=campaign.unlimited_ammo.enabled();
+    battletanx::BattleSession session(
+        session_config,angles,battletanx::level_unit_motion(world,navigation,angles));
+    session.add_owner(0U,battletanx::OwnerSetup{0U,false,1U,3,false});
+    session.add_owner(1U,battletanx::OwnerSetup{1U,true,5U,0,false});
+    const auto player_id=session.spawn_unit({
+        battletanx::retail::UnitKind::tank,0U,player_start.x,player_start.z,
+        battletanx::degrees_to_retail_angle(player_start.heading_degrees),0U});
+    if (!player_id) throw std::runtime_error("failed to spawn the player tank");
+    session.set_respawn_point(0U,{player_start.x,player_start.z,
+        battletanx::degrees_to_retail_angle(player_start.heading_degrees)});
+    const auto player_heading=battletanx::degrees_to_retail_angle(player_start.heading_degrees);
+    constexpr float enemy_start_distance=800.0F;
+    const float enemy_x=player_start.x+angles.sine(player_heading)*enemy_start_distance;
+    const float enemy_z=player_start.z+angles.cosine(player_heading)*enemy_start_distance;
+    const auto enemy_id=session.spawn_unit({
+        battletanx::retail::UnitKind::tank,1U,enemy_x,enemy_z,
+        static_cast<std::uint16_t>(player_heading+0x8000U),0U});
+    if (!enemy_id) throw std::runtime_error("failed to spawn the enemy tank");
+    auto terrain_sample=terrain.sample(player_start.x,player_start.z);
+    auto tank=player_start;
     std::cout << "Built native terrain surface: " << terrain.triangle_count()
-              << " triangles, player height " << tank.y << '\n';
-    battletanx::PlayerProjectilePool projectiles{};
+              << " triangles, player height "
+              << (terrain_sample ? terrain_sample->height : 0.0F) << '\n';
     std::uint64_t game_tick=0U;
     bool verified_native_frame=false;
+    bool progress_saved=false;
     while (platform->pump(current)) {
         const auto pad=battletanx::translate_player_input(current[0],previous[0]);
         auto input=battletanx::translate_drive_input(pad,bindings);
+        battletanx::SessionInput session_input;
+        session_input.drive=input;
+        session_input.start_pressed=(pad.pressed&0x1000U)!=0U;
+        session_input.advance=true;
         previous=current;
         const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now()-clock_start).count();
         const auto target_tick=battletanx::fixed_rate_tick(
             static_cast<std::uint64_t>(elapsed),ticks_per_second);
         while (game_tick<target_tick) {
-            battletanx::update_player_tank(tank,input,world,navigation,angles);
-            terrain_sample=terrain.sample(tank.x,tank.z);
-            if (terrain_sample) tank.y=terrain_sample->height;
-            battletanx::try_fire_player_projectile(
-                projectiles,tank,input,world,navigation,angles,
-                static_cast<std::int32_t>(game_tick));
-            battletanx::update_player_projectiles(projectiles,world,navigation,angles);
+            session.step(session_input);
+            for (const auto& event:session.gameplay_events()) {
+                if (event.kind!=battletanx::GameplayEventKind::mission_succeeded ||
+                    progress_saved) continue;
+                battletanx::CampaignWaveClear clear;
+                clear.mission_id=static_cast<std::uint8_t>(campaign.mission_id+1U);
+                clear.carry=session.owners()[0].score;
+                clear.unit_type=campaign.unit_type;
+                clear.bonus=campaign.bonus;
+                clear.control_scheme=campaign.control_scheme;
+                clear.difficulty=campaign.difficulty;
+                clear.powerups=campaign.powerups.raw;
+                clear.powerup_regen=campaign.powerup_regen.raw;
+                clear.base_defense=campaign.base_defense.raw;
+                clear.unlimited_ammo=campaign.unlimited_ammo.raw;
+                clear.sfx_volume=campaign.sfx_volume;
+                clear.music_volume=campaign.music_volume;
+                clear.bindings=campaign.bindings;
+                battletanx::apply_campaign_wave_clear(campaign,clear);
+                battletanx::write_controller_pak_record(
+                    pak_path,battletanx::serialize_campaign_record(campaign));
+                progress_saved=true;
+                std::cout << "Saved campaign progress to the Controller Pak\n";
+            }
+            session.clear_events();
             ++game_tick;
-            input.fire_pressed=false;
-            input.special_pressed=false;
+            session_input.drive.fire_pressed=false;
+            session_input.drive.special_pressed=false;
+            session_input.start_pressed=false;
         }
+        const auto active_player=session.owner_unit(0U);
+        if (active_player) {
+            const auto* player=session.units().get(*active_player);
+            if (player==nullptr) throw std::runtime_error("the player tank handle became stale");
+            battletanx::sync_player_tank_from_unit(tank,*player);
+        }
+        terrain_sample=terrain.sample(tank.x,tank.z);
+        if (terrain_sample) tank.y=terrain_sample->height;
         battletanx::DrawList draw;
         draw.animation_tick=game_tick;
         const std::array<float,3> ground_normal=terrain_sample ? terrain_sample->normal :
@@ -75,34 +133,39 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         draw.projection=battletanx::perspective_matrix(
             camera.vertical_fov_degrees,camera.aspect_ratio,
             camera.near_plane,camera.far_plane);
-        draw.items.reserve(world.items.size()+5U+projectiles.size());
+        draw.items.reserve(world.items.size()+5U*battletanx::unit_capacity+
+                           battletanx::shell_capacity);
         for (const auto& item:world.items) {
             const std::uint8_t layer=item.type==0 ? 0U : item.type==0x1C ? 6U : 2U;
             draw.items.push_back({static_cast<std::uint32_t>(item.shape),
                 battletanx::yaw_translation_matrix(item.angle,item.x,0.0F,item.z,angles),
                 layer,battletanx::decode_world_animation_phase(item.kind)});
         }
-        const auto heading=static_cast<std::uint16_t>(
-            tank.heading_degrees*(65536.0F/360.0F));
-        const auto turret=static_cast<std::uint16_t>(
-            tank.turret_degrees*(65536.0F/360.0F));
-        const auto body=battletanx::terrain_yaw_translation_matrix(
-            heading,tank.x,tank.y,tank.z,ground_normal,angles);
-        const auto turret_transform=battletanx::terrain_yaw_translation_matrix(
-            turret,tank.x,tank.y,tank.z,ground_normal,angles);
-        draw.items.push_back({assets.set_base()+0x0BU,body,1U,
-            static_cast<std::int8_t>(tank.track_phase_left>>4U)});
-        draw.items.push_back({assets.set_base()+0x0CU,body,1U,
-            static_cast<std::int8_t>(tank.track_phase_right>>4U)});
-        draw.items.push_back({assets.set_base()+0x0EU,body,1U,0});
-        draw.items.push_back({assets.set_base()+0x0DU,turret_transform,1U,0});
-        draw.items.push_back({assets.set_base()+0x52U,body,5U,0});
-        for (const auto& projectile:projectiles) {
-            if (!projectile.active) continue;
+        session.units().for_each([&](battletanx::EntityId,const battletanx::UnitRecord& unit) {
+            if (!unit.alive) return;
+            const auto unit_ground=terrain.sample(unit.x,unit.z);
+            const float unit_y=unit_ground ? unit_ground->height : unit.y;
+            const auto normal=unit_ground ? unit_ground->normal :
+                std::array<float,3>{0.0F,1.0F,0.0F};
+            const auto heading=battletanx::degrees_to_retail_angle(unit.heading_degrees);
+            const auto turret=battletanx::degrees_to_retail_angle(unit.turret_degrees);
+            const auto body=battletanx::terrain_yaw_translation_matrix(
+                heading,unit.x,unit_y,unit.z,normal,angles);
+            const auto turret_transform=battletanx::terrain_yaw_translation_matrix(
+                turret,unit.x,unit_y,unit.z,normal,angles);
+            const bool damaged=unit.health>0 && unit.health<=unit.max_health/2;
+            draw.items.push_back({assets.set_base()+0x0BU,body,1U,-1});
+            draw.items.push_back({assets.set_base()+0x0CU,body,1U,-1});
+            draw.items.push_back({assets.set_base()+(damaged ? 0x14U : 0x0EU),body,1U,0});
+            draw.items.push_back({assets.set_base()+(damaged ? 0x13U : 0x0DU),
+                                  turret_transform,1U,0});
+            draw.items.push_back({assets.set_base()+0x52U,body,5U,0});
+        });
+        session.shells().for_each([&](battletanx::EntityId,const battletanx::ShellRecord& shell) {
             draw.items.push_back({assets.set_base()+0x24U,
                 battletanx::yaw_translation_matrix(
-                    turret,projectile.x,tank.y+36.0F,projectile.z,angles),3U,0});
-        }
+                    shell.heading,shell.x,shell.y,shell.z,angles),3U,0});
+        });
         renderer.render(draw,assets);
         if (!verified_native_frame) {
             const auto pixels=renderer.pixels();
@@ -136,10 +199,13 @@ int main(int argc, char** argv) {
         auto pak=battletanx::load_controller_pak_record(pak_path);
         if (!pak) {
             battletanx::write_controller_pak_record(
-                pak_path,battletanx::ControllerPakRecord{});
+                pak_path,battletanx::serialize_campaign_record(
+                    battletanx::default_campaign_record()));
             pak=battletanx::load_controller_pak_record(pak_path);
         }
         if (!pak) throw std::runtime_error("failed to mount virtual Controller Pak");
+        const auto campaign=battletanx::parse_campaign_record(*pak);
+        if (!campaign) throw std::runtime_error("Controller Pak campaign record is invalid");
         std::cout << "Mounted verified Controller Pak image at "
                   << pak_path.string() << '\n';
         const auto rom = battletanx::Rom::load_verified(argv[show_window?2:1]);
@@ -207,10 +273,11 @@ int main(int argc, char** argv) {
         std::cout << "Decoded level-one native model cache: "
                   << preview_assets.meshes().size() << " meshes, "
                   << preview_assets.materials().size() << " materials\n";
-        std::cout << "Native runtime foundation is ready; gameplay bring-up is in progress.\n";
+        std::cout << "Native gameplay runtime is ready.\n";
         if (show_window) {
             run_platform_diagnostic(
-                *preview_world,*preview_navigation,angles,bindings,preview_assets);
+                *preview_world,*preview_navigation,angles,bindings,preview_assets,
+                *campaign,pak_path);
         }
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';
