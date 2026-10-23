@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <stdexcept>
 #include <string_view>
 
@@ -122,6 +123,23 @@ int retail_text_width(const RetailFont& font,std::string_view value,int scale) {
             result+=(static_cast<int>(font.glyphs[glyph_id].width)+1)*scale;
     }
     return result>0 ? result-scale : 0;
+}
+
+void number(std::span<std::uint32_t> pixels,int width,int height,
+            std::int32_t value,int x,int y,int scale,std::uint32_t color);
+
+void hud_number(std::span<std::uint32_t> pixels,int width,int height,
+                const HudAssets& assets,std::int32_t value,int x,int y,
+                int scale,std::uint32_t color) {
+    if (assets.fonts.empty()) {
+        number(pixels,width,height,value,x,y,scale,color);
+        return;
+    }
+    std::array<char,16> buffer{};
+    const auto converted=std::to_chars(buffer.data(),buffer.data()+buffer.size(),value);
+    if (converted.ec!=std::errc{}) return;
+    retail_text(pixels,width,height,assets.fonts[0],
+                std::string_view(buffer.data(),converted.ptr),x,y,scale,color);
 }
 
 void number(std::span<std::uint32_t> pixels,int width,int height,
@@ -247,10 +265,10 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
                   0x10*coordinate_scale,5*coordinate_scale,8*coordinate_scale,
                   segment<filled ? 0x80C83200U : 0x80202020U);
     sprite(pixels,width,height,assets.images[18],270,8,0xFFFFFFFFU);
-    number(pixels,width,height,state.primary_ammo,278*coordinate_scale,
-           39*coordinate_scale,coordinate_scale,0xFFFFFFFFU);
-    number(pixels,width,height,state.score,0x9C*coordinate_scale,
-           0x1A*coordinate_scale,coordinate_scale,0xFFFFFFFFU);
+    hud_number(pixels,width,height,assets,state.primary_ammo,278*coordinate_scale,
+               39*coordinate_scale,coordinate_scale,0xFFFFFFFFU);
+    hud_number(pixels,width,height,assets,state.score,0x9C*coordinate_scale,
+               0x1A*coordinate_scale,coordinate_scale,0xFFFFFFFFU);
 
     std::string_view banner;
     std::array<char,2> countdown_text{};

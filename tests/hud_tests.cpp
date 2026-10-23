@@ -69,7 +69,7 @@ int main() {
     CHECK(battletanx::filled_health_segments(100,0)==0U);
 
     auto fixture=hud_fixture();
-    const auto assets=battletanx::decode_hud_assets(fixture);
+    auto assets=battletanx::decode_hud_assets(fixture);
     CHECK(assets.images.size()==battletanx::retail_hud_image_count);
     CHECK(assets.images[0].width==32U && assets.images[0].height==32U);
     CHECK(assets.images[18].pixels[0]==0xFFFFFFFFU);
@@ -81,6 +81,7 @@ int main() {
     CHECK(fonts[0].glyph_index['A']==0U && fonts[0].glyphs.size()==1U);
     CHECK(fonts[0].atlas.pixels[0]==0xFFFFFFFFU);
     CHECK(fonts[0].atlas.pixels[3]==0U);
+    assets.fonts=fonts;
 
     std::vector<std::uint32_t> framebuffer(640U*480U,0x00101820U);
     battletanx::HudState state;
