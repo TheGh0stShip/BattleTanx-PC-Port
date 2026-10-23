@@ -82,6 +82,12 @@ selection drives texture scrolling and CI4 palette animation, including
 independent tank tread phases.
 No original display commands are executed at runtime.
 
+The native audio path decodes all 49 retail sound effects from the verified
+ROM into host PCM and mixes active one-shot voices through SDL at 44.1 kHz.
+Gameplay fire, impact, destruction, pickup, and empty-ammunition events are
+routed to this bounded stereo mixer, with simple listener-relative panning for
+positional sounds. Music and continuous vehicle sounds remain future work.
+
 `--window` runs the native gameplay runtime through the pinned SDL2 host
 library. It creates a native Linux or Windows window, maps keyboard and game
 controllers to the original controller representation, and presents a native
@@ -103,8 +109,8 @@ window exits.
 
 The current playable slice is not yet the complete campaign. Remaining work
 includes campaign menus and level transitions, recovered scripted enemy goals,
-the remaining weapons and effects, full pickup behavior, audio playback, and
-several uncommon render modes.
+the remaining weapons and effects, full pickup behavior, music and continuous
+vehicle sounds, and several uncommon render modes.
 
 Up to four hot-pluggable SDL game controllers are assigned to ports in
 connection order. The left stick supplies the N64 analog stick, the D-pad and

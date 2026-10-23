@@ -1,4 +1,5 @@
 #include "battletanx/angle.hpp"
+#include "battletanx/audio.hpp"
 #include "battletanx/big_endian.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/camera.hpp"
@@ -19,6 +20,7 @@
 #include "battletanx/texture.hpp"
 #include "battletanx/terrain.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -52,6 +54,26 @@ void put_u32(std::vector<std::uint8_t>& bytes,std::size_t offset,std::uint32_t v
     } while (false)
 
 int main() {
+    {
+        std::array<std::uint8_t,9> frame{};
+        std::array<std::int16_t,16> coefficients{};
+        const auto silence=battletanx::decode_vadpcm(frame,coefficients,1U);
+        CHECK(silence.size()==16U);
+        CHECK(std::all_of(silence.begin(),silence.end(),
+                          [](std::int16_t sample) { return sample==0; }));
+        frame[1]=0x10U;
+        const auto impulse=battletanx::decode_vadpcm(frame,coefficients,1U);
+        CHECK(impulse[0]==1 && impulse[1]==0);
+        bool rejected=false;
+        try {
+            const auto invalid=battletanx::decode_vadpcm(
+                std::span<const std::uint8_t>(frame).first(8U),coefficients,1U);
+            static_cast<void>(invalid);
+        } catch (const std::runtime_error&) {
+            rejected=true;
+        }
+        CHECK(rejected);
+    }
     CHECK(battletanx::fixed_rate_tick(0U,30U)==0U);
     CHECK(battletanx::fixed_rate_tick(33333333U,30U)==0U);
     CHECK(battletanx::fixed_rate_tick(33333334U,30U)==1U);

@@ -1,4 +1,5 @@
 #include "battletanx/angle.hpp"
+#include "battletanx/audio.hpp"
 #include "battletanx/battle_session.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/camera.hpp"
@@ -50,10 +51,12 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::AngleTable& angles,
                              const battletanx::InputBindings& bindings,
                              const battletanx::ModelAssets& assets,
+                             const battletanx::SoundBank& sounds,
                              const std::array<std::uint32_t,pickup_model_kind_count>& pickup_models,
                              battletanx::CampaignRecord campaign,
                              const std::filesystem::path& pak_path) {
     auto platform=battletanx::Platform::create("BattleTanx native source port");
+    platform->set_sound_bank(sounds);
     battletanx::SoftwareRenderer renderer(
         battletanx::native_width,battletanx::native_height);
     std::array<battletanx::ControllerPad,4> previous{};
@@ -145,6 +148,13 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                     pak_path,battletanx::serialize_campaign_record(campaign));
                 progress_saved=true;
                 std::cout << "Saved campaign progress to the Controller Pak\n";
+            }
+            const auto listener_id=session.owner_unit(0U);
+            const auto* listener=listener_id ? session.units().get(*listener_id) : nullptr;
+            for (const auto& sound:session.sound_events()) {
+                const float pan=listener!=nullptr && sound.positional ?
+                    std::clamp((sound.x-listener->x)/2000.0F,-1.0F,1.0F) : 0.0F;
+                platform->play_sound(sound.sound_id,pan);
             }
             session.clear_events();
             ++game_tick;
@@ -325,6 +335,7 @@ int main(int argc, char** argv) {
                   << " level-local model geometry references: " << model_audit.vertices
                   << " vertices, " << model_audit.triangles << " triangles\n";
         const auto preview_assets=battletanx::ModelAssets::load(rom,*preview_world);
+        const auto sounds=battletanx::load_sound_effect_bank(rom);
         const auto pickup_models=load_pickup_model_slots(rom);
         for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x52U}) {
             if (preview_assets.set_base()+slot>=preview_assets.sets().size() ||
@@ -335,11 +346,13 @@ int main(int argc, char** argv) {
         std::cout << "Decoded level-one native model cache: "
                   << preview_assets.meshes().size() << " meshes, "
                   << preview_assets.materials().size() << " materials\n";
+        std::cout << "Decoded " << sounds.sounds.size()
+                  << " native sound effects at " << sounds.sample_rate << " Hz\n";
         std::cout << "Native gameplay runtime is ready.\n";
         if (show_window) {
             run_platform_diagnostic(
                 *preview_world,*preview_navigation,angles,bindings,preview_assets,
-                pickup_models,*campaign,pak_path);
+                sounds,pickup_models,*campaign,pak_path);
         }
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';

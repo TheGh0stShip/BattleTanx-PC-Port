@@ -6,8 +6,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace battletanx {
 namespace {
@@ -33,7 +36,7 @@ class SdlPlatform final : public Platform {
   public:
     explicit SdlPlatform(std::string_view title) {
         SDL_SetMainReady();
-        if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_GAMECONTROLLER|SDL_INIT_HAPTIC)!=0) {
+        if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_GAMECONTROLLER|SDL_INIT_HAPTIC)!=0) {
             const auto error=sdl_error("SDL initialization failed");
             SDL_Quit();
             throw error;
@@ -67,6 +70,21 @@ class SdlPlatform final : public Platform {
             SDL_Quit();
             throw error;
         }
+        SDL_AudioSpec desired{};
+        desired.freq=44100;
+        desired.format=AUDIO_S16SYS;
+        desired.channels=2U;
+        desired.samples=1024U;
+        desired.callback=&SdlPlatform::audio_callback;
+        desired.userdata=this;
+        audio_device_=SDL_OpenAudioDevice(nullptr,0,&desired,&audio_spec_,0);
+        if (audio_device_==0U) {
+            const auto error=sdl_error("audio device creation failed");
+            shutdown();
+            throw error;
+        }
+        voices_.reserve(64U);
+        SDL_PauseAudioDevice(audio_device_,0);
         for (int index=0; index<SDL_NumJoysticks(); ++index) open_controller(index);
     }
 
@@ -76,6 +94,8 @@ class SdlPlatform final : public Platform {
 
   private:
     void shutdown() noexcept {
+        if (audio_device_!=0U) SDL_CloseAudioDevice(audio_device_);
+        audio_device_=0U;
         for (auto*& controller : controllers_) {
             if (controller!=nullptr) SDL_GameControllerClose(controller);
             controller=nullptr;
@@ -136,6 +156,32 @@ class SdlPlatform final : public Platform {
         SDL_RenderPresent(renderer_);
     }
 
+    void set_sound_bank(const SoundBank& sounds) override {
+        if (sounds.sample_rate!=static_cast<std::uint32_t>(audio_spec_.freq)) {
+            throw std::runtime_error("sound bank rate does not match the native audio device");
+        }
+        SDL_LockAudioDevice(audio_device_);
+        sounds_=sounds;
+        voices_.clear();
+        SDL_UnlockAudioDevice(audio_device_);
+    }
+
+    void play_sound(std::uint16_t sound_id,float pan,float gain) override {
+        if (sound_id>=sounds_.sounds.size() || !std::isfinite(pan) || !std::isfinite(gain)) return;
+        pan=std::clamp(pan,-1.0F,1.0F);
+        gain=std::clamp(gain,0.0F,1.0F);
+        SDL_LockAudioDevice(audio_device_);
+        if (voices_.size()>=64U) voices_.erase(voices_.begin());
+        const PcmSound& sound=sounds_.sounds[sound_id];
+        const float stored_pan=(static_cast<float>(sound.pan)-64.0F)/63.0F;
+        const float mixed_pan=std::clamp(stored_pan+pan,-1.0F,1.0F);
+        const float volume=gain*static_cast<float>(sound.volume)/127.0F;
+        voices_.push_back(Voice{sound_id,0U,
+                               volume*std::min(1.0F,1.0F-mixed_pan),
+                               volume*std::min(1.0F,1.0F+mixed_pan)});
+        SDL_UnlockAudioDevice(audio_device_);
+    }
+
     void open_controller(int device_index) {
         if (!SDL_IsGameController(device_index)) return;
         const auto free_port=std::find(controllers_.begin(),controllers_.end(),nullptr);
@@ -179,9 +225,51 @@ class SdlPlatform final : public Platform {
         return map_host_controller(state);
     }
 
+    struct Voice {
+        std::uint16_t sound{};
+        std::size_t cursor{};
+        float left{},right{};
+    };
+
+    static void audio_callback(void* userdata,Uint8* stream,int length) noexcept {
+        static_cast<SdlPlatform*>(userdata)->mix_audio(
+            reinterpret_cast<std::int16_t*>(stream),length/static_cast<int>(sizeof(std::int16_t)));
+    }
+
+    void mix_audio(std::int16_t* output,int sample_count) noexcept {
+        std::fill_n(output,sample_count,std::int16_t{0});
+        const int frames=sample_count/2;
+        for (int frame=0; frame<frames; ++frame) {
+            std::int32_t left=0;
+            std::int32_t right=0;
+            for (Voice& voice:voices_) {
+                if (voice.sound>=sounds_.sounds.size()) continue;
+                const PcmSound& sound=sounds_.sounds[voice.sound];
+                if (voice.cursor>=sound.samples.size()) continue;
+                const float sample=static_cast<float>(sound.samples[voice.cursor++]);
+                left+=static_cast<std::int32_t>(sample*voice.left);
+                right+=static_cast<std::int32_t>(sample*voice.right);
+            }
+            output[frame*2]=static_cast<std::int16_t>(std::clamp(
+                left,static_cast<std::int32_t>(std::numeric_limits<std::int16_t>::min()),
+                static_cast<std::int32_t>(std::numeric_limits<std::int16_t>::max())));
+            output[frame*2+1]=static_cast<std::int16_t>(std::clamp(
+                right,static_cast<std::int32_t>(std::numeric_limits<std::int16_t>::min()),
+                static_cast<std::int32_t>(std::numeric_limits<std::int16_t>::max())));
+        }
+        voices_.erase(std::remove_if(voices_.begin(),voices_.end(),[this](const Voice& voice) {
+            return voice.sound>=sounds_.sounds.size() ||
+                   voice.cursor>=sounds_.sounds[voice.sound].samples.size();
+        }),voices_.end());
+    }
+
     SDL_Window* window_{};
     SDL_Renderer* renderer_{};
     SDL_Texture* texture_{};
+    SDL_AudioDeviceID audio_device_{};
+    SDL_AudioSpec audio_spec_{};
+    SoundBank sounds_;
+    std::vector<Voice> voices_;
     std::array<SDL_GameController*,4> controllers_{};
 };
 } // namespace

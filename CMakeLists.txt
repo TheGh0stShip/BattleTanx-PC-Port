@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(battletanx_core
     src/angle.cpp
+    src/audio.cpp
     src/bundle.cpp
     src/camera.cpp
     src/controller_pak.cpp
