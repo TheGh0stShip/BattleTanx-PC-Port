@@ -63,7 +63,9 @@ std::array<std::uint32_t,pickup_model_kind_count> load_pickup_model_slots(
     return slots;
 }
 
-void run_platform_diagnostic(const battletanx::WorldLevel& world,
+enum class WaveRunResult { quit, advance };
+
+WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::NavigationLevel& navigation,
                              const battletanx::AngleTable& angles,
                              const battletanx::InputBindings& bindings,
@@ -228,7 +230,11 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                 }
                 if (event.kind==battletanx::GameplayEventKind::unit_destroyed && event.owner==0U)
                     platform->rumble(0U,1.0F,500U);
-                if (event.kind==battletanx::GameplayEventKind::mission_succeeded && !progress_saved) {
+                const bool cleared=event.kind==battletanx::GameplayEventKind::mission_succeeded;
+                const bool endurance_finished=
+                    event.kind==battletanx::GameplayEventKind::mission_failed &&
+                    wave.advances_on_failure;
+                if ((cleared || endurance_finished) && !progress_saved) {
                     battletanx::CampaignWaveClear clear;
                     const auto* next=battletanx::next_campaign_wave(wave);
                     clear.mission_id=next!=nullptr ? static_cast<std::uint8_t>(next->mission_id) : 0U;
@@ -418,11 +424,15 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             verified_native_frame=true;
         }
         platform->present(renderer.pixels(),battletanx::native_width,battletanx::native_height);
+        if (progress_saved && session.mission().state()==battletanx::MatchState::round_over) {
+            return WaveRunResult::advance;
+        }
         const auto next_tick_nanoseconds=static_cast<std::int64_t>(
             ((game_tick+1U)*UINT64_C(1000000000)+ticks_per_second-1U)/ticks_per_second);
         std::this_thread::sleep_until(
             clock_start+std::chrono::nanoseconds(next_tick_nanoseconds));
     }
+    return WaveRunResult::quit;
 }
 } // namespace
 
@@ -507,74 +517,87 @@ int main(int argc, char** argv) {
         }
         std::cout << "Loaded retail 16-bit angle table: "
                   << battletanx::AngleTable::value_count << " samples\n";
-        auto hud_assets=battletanx::load_hud_assets(rom);
-        if (wave->world_stream!=1U) hud_assets.level_map.reset();
-        std::optional<battletanx::WorldLevel> active_world;
-        std::optional<battletanx::NavigationLevel> active_navigation;
-        std::optional<std::vector<std::uint8_t>> active_world_stream;
-        std::size_t world_groups=0U;
-        std::size_t world_items=0U;
-        std::size_t navigation_triangles=0U;
-        battletanx::ModelGeometryAudit model_audit{};
-        for (const auto& descriptor : battletanx::level_stream_descriptors()) {
-            auto world=battletanx::load_world_level(rom,descriptor);
-            const auto level_audit=battletanx::audit_model_geometry(rom,world);
-            model_audit.part_references+=level_audit.part_references;
-            model_audit.material_blobs+=level_audit.material_blobs;
-            model_audit.geometry_blobs+=level_audit.geometry_blobs;
-            model_audit.vertices+=level_audit.vertices;
-            model_audit.triangles+=level_audit.triangles;
-            world_groups+=world.groups.size();
-            world_items+=world.items.size();
-            if (descriptor.index==wave->world_stream) {
-                active_world=std::move(world);
-                active_world_stream=battletanx::load_world_stream(rom,descriptor);
-            }
-            if (descriptor.navigation) {
-                auto navigation=battletanx::load_navigation_level(rom,descriptor);
-                navigation_triangles+=navigation.triangles.size();
-                if (descriptor.index==wave->world_stream) active_navigation=std::move(navigation);
-            }
-        }
-        std::cout << "Validated 22 world streams and 18 navigation streams: "
-                  << world_groups << " groups, " << world_items << " placements, "
-                  << navigation_triangles << " navigation triangles\n";
-        std::cout << "Validated " << model_audit.geometry_blobs
-                  << " level-local model geometry references: " << model_audit.vertices
-                  << " vertices, " << model_audit.triangles << " triangles\n";
-        if (!active_world || !active_navigation || !active_world_stream) {
-            throw std::runtime_error("campaign wave level streams are unavailable");
-        }
-        const auto active_assets=battletanx::ModelAssets::load(rom,*active_world);
         const auto sounds=battletanx::load_sound_effect_bank(rom);
-        std::optional<battletanx::MusicTrack> music;
-        if (show_window) music=battletanx::render_music_sequence(
-            rom,static_cast<std::uint32_t>(wave->mission_id));
         const auto pickup_models=load_pickup_model_slots(rom);
         const auto turret_models=load_turret_model_slots(rom);
-        for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x52U}) {
-            if (active_assets.set_base()+slot>=active_assets.sets().size() ||
-                active_assets.set(active_assets.set_base()+slot).lod_count==0U) {
-                throw std::runtime_error("campaign level native model slot is absent");
+        for (;;) {
+            auto hud_assets=battletanx::load_hud_assets(rom);
+            if (wave->world_stream!=1U) hud_assets.level_map.reset();
+            std::optional<battletanx::WorldLevel> active_world;
+            std::optional<battletanx::NavigationLevel> active_navigation;
+            std::optional<std::vector<std::uint8_t>> active_world_stream;
+            std::size_t world_groups=0U;
+            std::size_t world_items=0U;
+            std::size_t navigation_triangles=0U;
+            battletanx::ModelGeometryAudit model_audit{};
+            for (const auto& descriptor : battletanx::level_stream_descriptors()) {
+                auto world=battletanx::load_world_level(rom,descriptor);
+                const auto level_audit=battletanx::audit_model_geometry(rom,world);
+                model_audit.part_references+=level_audit.part_references;
+                model_audit.material_blobs+=level_audit.material_blobs;
+                model_audit.geometry_blobs+=level_audit.geometry_blobs;
+                model_audit.vertices+=level_audit.vertices;
+                model_audit.triangles+=level_audit.triangles;
+                world_groups+=world.groups.size();
+                world_items+=world.items.size();
+                if (descriptor.index==wave->world_stream) {
+                    active_world=std::move(world);
+                    active_world_stream=battletanx::load_world_stream(rom,descriptor);
+                }
+                if (descriptor.navigation) {
+                    auto navigation=battletanx::load_navigation_level(rom,descriptor);
+                    navigation_triangles+=navigation.triangles.size();
+                    if (descriptor.index==wave->world_stream) active_navigation=std::move(navigation);
+                }
             }
-        }
-        std::cout << "Decoded campaign level " << wave->mission_id << " native model cache: "
-                  << active_assets.meshes().size() << " meshes, "
-                  << active_assets.materials().size() << " materials\n";
-        std::cout << "Decoded " << sounds.sounds.size()
-                  << " native sound effects at " << sounds.sample_rate << " Hz\n";
-        if (music) {
-            std::cout << "Rendered native music sequence " << music->sequence_index
-                      << ": " << music->stereo_samples.size()/2U
-                      << " stereo frames\n";
-        }
-        std::cout << "Native gameplay runtime is ready.\n";
-        if (show_window) {
-            run_platform_diagnostic(
-                *active_world,*active_navigation,angles,bindings,active_assets,
-                sounds,*music,hud_assets,pickup_models,turret_models,*wave,
-                battletanx::parse_team_spawn_table(*active_world_stream),
-                *campaign,settings,pak_path);
+            std::cout << "Validated 22 world streams and 18 navigation streams: "
+                      << world_groups << " groups, " << world_items << " placements, "
+                      << navigation_triangles << " navigation triangles\n";
+            std::cout << "Validated " << model_audit.geometry_blobs
+                      << " level-local model geometry references: " << model_audit.vertices
+                      << " vertices, " << model_audit.triangles << " triangles\n";
+            if (!active_world || !active_navigation || !active_world_stream) {
+                throw std::runtime_error("campaign wave level streams are unavailable");
+            }
+            const auto active_assets=battletanx::ModelAssets::load(rom,*active_world);
+            std::optional<battletanx::MusicTrack> music;
+            if (show_window) music=battletanx::render_music_sequence(
+                rom,static_cast<std::uint32_t>(wave->mission_id));
+            for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x52U}) {
+                if (active_assets.set_base()+slot>=active_assets.sets().size() ||
+                    active_assets.set(active_assets.set_base()+slot).lod_count==0U) {
+                    throw std::runtime_error("campaign level native model slot is absent");
+                }
+            }
+            std::cout << "Decoded campaign level " << wave->mission_id << " native model cache: "
+                      << active_assets.meshes().size() << " meshes, "
+                      << active_assets.materials().size() << " materials\n";
+            std::cout << "Decoded " << sounds.sounds.size()
+                      << " native sound effects at " << sounds.sample_rate << " Hz\n";
+            if (music) {
+                std::cout << "Rendered native music sequence " << music->sequence_index
+                          << ": " << music->stereo_samples.size()/2U
+                          << " stereo frames\n";
+            }
+            std::cout << "Native gameplay runtime is ready.\n";
+            if (!show_window) break;
+            const auto result=run_platform_diagnostic(
+                    *active_world,*active_navigation,angles,bindings,active_assets,
+                    sounds,*music,hud_assets,pickup_models,turret_models,*wave,
+                    battletanx::parse_team_spawn_table(*active_world_stream),
+                    *campaign,settings,pak_path);
+            if (result==WaveRunResult::quit) break;
+            pak=battletanx::load_controller_pak_record(pak_path);
+            if (!pak) throw std::runtime_error("failed to reload the Controller Pak after wave clear");
+            campaign=battletanx::parse_campaign_record(*pak);
+            if (!campaign) throw std::runtime_error("saved Controller Pak campaign record is invalid");
+            wave=battletanx::campaign_wave_for_record(*campaign);
+            if (wave==nullptr) {
+                std::cout << "Campaign complete. Final progress is saved to the Controller Pak.\n";
+                break;
+            }
+            std::cout << "Loading campaign wave " << static_cast<unsigned>(wave->wave_index)
+                      << " from saved progress\n";
         }
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';
