@@ -267,7 +267,10 @@ std::uint32_t alpha_blend(std::uint32_t source,std::uint32_t destination) noexce
 }
 
 bool retail_front_face(float signed_screen_area) noexcept {
-    return signed_screen_area>0.0F;
+    // Retail model data is counter-clockwise in its right-handed, Y-up
+    // coordinate system.  Projection into our top-left-origin framebuffer
+    // flips Y, so those front faces have negative screen-space area.
+    return signed_screen_area<0.0F;
 }
 
 std::size_t clipped_view_volume_vertex_count(
