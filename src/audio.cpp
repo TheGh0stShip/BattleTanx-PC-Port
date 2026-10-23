@@ -45,8 +45,10 @@ double advance_looping_cursor(double cursor,float pitch,std::size_t sample_count
     if (!std::isfinite(cursor) || !std::isfinite(pitch) || pitch<=0.0F || sample_count==0U) {
         return 0.0;
     }
-    const double begin=loop_end>loop_start && loop_end<=sample_count ? loop_start : 0U;
-    const double end=loop_end>loop_start && loop_end<=sample_count ? loop_end : sample_count;
+    const bool valid_loop=loop_end>loop_start && loop_end<=sample_count;
+    const double begin=valid_loop ? static_cast<double>(loop_start) : 0.0;
+    const double end=valid_loop ? static_cast<double>(loop_end) :
+                                 static_cast<double>(sample_count);
     cursor+=pitch;
     if (cursor>=end) cursor=begin+std::fmod(cursor-begin,end-begin);
     return cursor;
