@@ -144,7 +144,8 @@ std::string roster_summary(const battletanx::ControllerRoster& roster) {
     return result;
 }
 
-WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
+WaveRunResult run_platform_diagnostic(battletanx::Platform& platform,
+                             const battletanx::WorldLevel& world,
                              const battletanx::NavigationLevel& navigation,
                              const battletanx::AngleTable& angles,
                              const battletanx::InputBindings& bindings,
@@ -165,9 +166,8 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::PcSettings& settings,
                              const std::filesystem::path& pak_path,
                              std::uint64_t smoke_ticks=0U) {
-    auto platform=battletanx::Platform::create("BattleTanx native source port",settings);
-    platform->set_sound_bank(sounds);
-    platform->set_music_track(music,settings.master_volume*settings.music_volume*
+    platform.set_sound_bank(sounds);
+    platform.set_music_track(music,settings.master_volume*settings.music_volume*
                                     static_cast<float>(campaign.music_volume)/7.0F);
     battletanx::SoftwareRenderer renderer(
         battletanx::native_width,battletanx::native_height);
@@ -333,6 +333,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
     std::uint64_t game_tick=0U;
     bool verified_native_frame=false;
     std::optional<battletanx::campaign_flow::FlowBattleOutcome> pending_outcome;
+    std::optional<battletanx::frontend::FrontendState> pause_frontend;
     std::optional<battletanx::frontend::FrontendState> result_frontend;
     std::optional<WaveRunResult> resolved_result;
     std::function<void(std::vector<battletanx::campaign_flow::FlowTransition>)> handle_transitions;
@@ -391,7 +392,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             }
         }
     };
-    while (platform->pump(current)) {
+    while (platform.pump(current)) {
         const auto pad=battletanx::translate_player_input(current[0],previous[0]);
         if (session.mission().state()==battletanx::MatchState::title) {
             if ((pad.pressed&0x0200U)!=0U) return WaveRunResult::selection_previous;
@@ -402,6 +403,31 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
         session_input.drive=input;
         session_input.start_pressed=(pad.pressed&0x1000U)!=0U;
         session_input.advance=(pad.pressed&(0x8000U|0x1000U))!=0U;
+        bool resume_from_pause=false;
+        if (pause_frontend) {
+            session_input.drive={};
+            session_input.start_pressed=false;
+            session_input.advance=false;
+            const auto frontend_step=battletanx::frontend::update_frontend(
+                *pause_frontend,frontend_input(pad));
+            for (const auto& command:frontend_step.commands) {
+                using battletanx::frontend::CommandKind;
+                if (command.kind==CommandKind::resume_mission) {
+                    resume_from_pause=true;
+                    pause_frontend.reset();
+                } else if (command.kind==CommandKind::restart_mission ||
+                           command.kind==CommandKind::quit_to_title) {
+                    battletanx::campaign_flow::FlowCommand finished;
+                    finished.kind=battletanx::campaign_flow::FlowCommandKind::battle_finished;
+                    finished.outcome.restarted=command.kind==CommandKind::restart_mission;
+                    finished.outcome.aborted=true;
+                    finished.outcome.player_score=session.owners()[0].score;
+                    finished.outcome.player_bonus=campaign.bonus;
+                    handle_transitions(campaign_flow.apply(finished));
+                }
+            }
+        }
+        if (resolved_result) return *resolved_result;
         if (smoke_ticks!=0U) {
             session_input.advance=game_tick==0U;
             if (game_tick>=130U) {
@@ -440,13 +466,17 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
         const auto target_tick=smoke_ticks!=0U ? game_tick+1U : battletanx::fixed_rate_tick(
             static_cast<std::uint64_t>(elapsed),ticks_per_second);
         while (game_tick<target_tick) {
+            if (resume_from_pause) {
+                session_input.start_pressed=true;
+                resume_from_pause=false;
+            }
             static_cast<void>(bridge.tick(session,session_input));
             for (const auto& event:session.gameplay_events()) {
                 if (event.kind==battletanx::GameplayEventKind::unit_damaged && event.owner==0U) {
-                    platform->rumble(0U,std::clamp(static_cast<float>(event.value)/40.0F,0.2F,1.0F),250U);
+                    platform.rumble(0U,std::clamp(static_cast<float>(event.value)/40.0F,0.2F,1.0F),250U);
                 }
                 if (event.kind==battletanx::GameplayEventKind::unit_destroyed && event.owner==0U)
-                    platform->rumble(0U,1.0F,500U);
+                    platform.rumble(0U,1.0F,500U);
                 if ((event.kind==battletanx::GameplayEventKind::mission_succeeded ||
                      event.kind==battletanx::GameplayEventKind::mission_failed) &&
                     !pending_outcome && !result_frontend && !resolved_result) {
@@ -464,7 +494,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             for (const auto& sound:session.sound_events()) {
                 const float pan=listener!=nullptr && sound.positional ?
                     std::clamp((sound.x-listener->x)/2000.0F,-1.0F,1.0F) : 0.0F;
-                platform->play_sound(sound.sound_id,pan,
+                platform.play_sound(sound.sound_id,pan,
                     settings.master_volume*settings.effects_volume*
                     static_cast<float>(campaign.sfx_volume)/7.0F);
             }
@@ -474,6 +504,14 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
             session_input.drive.special_pressed=false;
             session_input.start_pressed=false;
             session_input.advance=false;
+        }
+        if (session.mission().state()==battletanx::MatchState::paused &&
+            !pause_frontend && !resolved_result) {
+            auto state=battletanx::frontend::make_frontend_state();
+            state.record=campaign;
+            state.screen=battletanx::frontend::Screen::in_mission;
+            battletanx::frontend::enter_pause(state);
+            pause_frontend=std::move(state);
         }
         if (pending_outcome) {
             battletanx::campaign_flow::FlowCommand finished;
@@ -492,17 +530,17 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                 player->velocity_x,player->velocity_z,
                 settings.master_volume*settings.effects_volume*
                 static_cast<float>(campaign.sfx_volume)/7.0F);
-            platform->set_looping_sound(0U,0x10U,0.0F,
+            platform.set_looping_sound(0U,0x10U,0.0F,
                                         vehicle_audio.engine_gain,vehicle_audio.engine_pitch);
             if (vehicle_audio.skid_gain>0.0F) {
-                platform->set_looping_sound(1U,0x12U,0.0F,
+                platform.set_looping_sound(1U,0x12U,0.0F,
                                             vehicle_audio.skid_gain,1.0F);
             } else {
-                platform->stop_looping_sound(1U);
+                platform.stop_looping_sound(1U);
             }
         } else {
-            platform->stop_looping_sound(0U);
-            platform->stop_looping_sound(1U);
+            platform.stop_looping_sound(0U);
+            platform.stop_looping_sound(1U);
         }
         terrain_sample=terrain.sample(tank.x,tank.z);
         if (terrain_sample) tank.y=terrain_sample->height;
@@ -633,11 +671,16 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
         hud.result=battletanx::campaign_result_text(
             static_cast<std::size_t>(wave.wave_index)).value_or(std::string_view{});
         std::string result_prompt;
-        if (result_frontend) {
-            for (const auto& command:battletanx::frontend::frontend_draw(*result_frontend)) {
+        const auto* active_frontend=result_frontend ? &*result_frontend :
+            pause_frontend ? &*pause_frontend : nullptr;
+        if (active_frontend!=nullptr) {
+            for (const auto& command:battletanx::frontend::frontend_draw(*active_frontend)) {
                 using battletanx::frontend::ItemId;
                 std::string_view label;
                 switch (command.item) {
+                case ItemId::pause_continue: label="CONTINUE"; break;
+                case ItemId::pause_restart: label="RESTART"; break;
+                case ItemId::pause_quit: label="QUIT"; break;
                 case ItemId::result_retry: label="A RETRY"; break;
                 case ItemId::result_quit: label="B QUIT"; break;
                 case ItemId::result_continue: label="A CONTINUE"; break;
@@ -646,6 +689,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                 }
                 if (label.empty()) continue;
                 if (!result_prompt.empty()) result_prompt+="   ";
+                if (command.selected) result_prompt+="> ";
                 result_prompt+=label;
             }
         }
@@ -687,7 +731,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                       << " visible pixels\n";
             verified_native_frame=true;
         }
-        platform->present(renderer.pixels(),battletanx::native_width,battletanx::native_height);
+        platform.present(renderer.pixels(),battletanx::native_width,battletanx::native_height);
         if (smoke_ticks!=0U && game_tick>=smoke_ticks) {
             const auto id=session.owner_unit(0U);
             const auto* player=id ? session.units().get(*id) : nullptr;
@@ -814,6 +858,8 @@ int main(int argc, char** argv) {
         const auto roster_table=rom.bytes().subspan(
             battletanx::controller_roster_rom_offset,
             battletanx::controller_roster_count*battletanx::controller_roster_size);
+        auto platform=show_window ?
+            battletanx::Platform::create("BattleTanx native source port",settings) : nullptr;
         for (;;) {
             auto hud_assets=battletanx::load_hud_assets(rom);
             if (wave->world_stream!=1U) hud_assets.level_map.reset();
@@ -884,7 +930,7 @@ int main(int argc, char** argv) {
             std::cout << "Native gameplay runtime is ready.\n";
             if (!show_window) break;
             const auto result=run_platform_diagnostic(
-                    *active_world,*active_navigation,angles,bindings,active_assets,
+                    *platform,*active_world,*active_navigation,angles,bindings,active_assets,
                     sounds,*music,hud_assets,briefing_image,briefing_page,
                     pickup_models,turret_models,roster_table,*wave,
                     battletanx::parse_team_spawn_table(*active_world_stream),
