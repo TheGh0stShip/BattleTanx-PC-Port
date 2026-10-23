@@ -320,7 +320,8 @@ RUNTIME_TEST(replan_budget_round_robin_one_unit_per_tick) {
     REQUIRE(!scheduler.run_tick(alive,consumes,false).has_value());
     REQUIRE(scheduler.cursor==5U);
     scheduler.cursor=19U;
-    REQUIRE(scheduler.run_tick(alive,consumes)==std::optional<std::uint8_t>{19U});
+    REQUIRE(scheduler.run_tick(alive,consumes)==
+            std::optional<std::uint8_t>{std::uint8_t{19U}});
     REQUIRE(scheduler.cursor==0U);
     return true;
 }
