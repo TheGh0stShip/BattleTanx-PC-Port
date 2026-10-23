@@ -194,6 +194,22 @@ int retail_text_width(const RetailFont& font,std::string_view value,int scale) {
     return result>0 ? result-scale : 0;
 }
 
+void retail_multiline_text(std::span<std::uint32_t> pixels,int width,int height,
+                           const RetailFont& font,std::string_view value,
+                           int top,int scale,std::uint32_t color) {
+    while (!value.empty()) {
+        const std::size_t newline=value.find('\n');
+        const std::string_view line=value.substr(0U,newline);
+        if (!line.empty()) {
+            const int line_width=retail_text_width(font,line,scale);
+            retail_text(pixels,width,height,font,line,(width-line_width)/2,top,scale,color);
+        }
+        top+=(static_cast<int>(font.height)+2)*scale;
+        if (newline==std::string_view::npos) break;
+        value.remove_prefix(newline+1U);
+    }
+}
+
 void number(std::span<std::uint32_t> pixels,int width,int height,
             std::int32_t value,int x,int y,int scale,std::uint32_t color);
 
@@ -355,11 +371,15 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
         const int image_x=(logical_width-static_cast<int>(briefing.width))/2;
         rectangle(pixels,width,height,0,0,width,height,0xE0000000U);
         sprite(pixels,width,height,briefing,image_x,18,0xFFFFFFFFU);
+        if (!assets.fonts.empty()) {
+            retail_multiline_text(pixels,width,height,assets.fonts[0],state.briefing_text,
+                                  210,1,0xFFFFFFFFU);
+        }
         if (!state.objective.empty() && !assets.fonts.empty()) {
             constexpr int scale=2;
             const int objective_width=retail_text_width(assets.fonts[0],state.objective,scale);
             retail_text(pixels,width,height,assets.fonts[0],state.objective,
-                        (width-objective_width)/2,220,scale,0xFFFFFFFFU);
+                        (width-objective_width)/2,365,scale,0xFFFFC040U);
         }
     }
 

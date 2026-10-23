@@ -52,6 +52,7 @@ struct HudState {
     std::int32_t frames_remaining{};
     MatchState match_state{MatchState::live};
     const RgbaImage* briefing_image{};
+    std::string_view briefing_text;
     std::string_view objective;
     std::string_view result;
     std::vector<HudMarker> markers;

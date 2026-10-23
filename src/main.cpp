@@ -76,6 +76,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::MusicTrack& music,
                              const battletanx::HudAssets& hud_assets,
                              const std::optional<battletanx::RgbaImage>& briefing_image,
+                             const battletanx::CampaignBriefingPage& briefing_page,
                              const std::array<std::uint32_t,pickup_model_kind_count>& pickup_models,
                              const std::array<std::uint32_t,battletanx::turret_types>& turret_models,
                              std::span<const std::uint8_t> roster_table,
@@ -429,6 +430,7 @@ WaveRunResult run_platform_diagnostic(const battletanx::WorldLevel& world,
         battletanx::HudState hud;
         hud.match_state=session.mission().state();
         hud.briefing_image=briefing_image ? &*briefing_image : nullptr;
+        hud.briefing_text=briefing_page.text;
         hud.objective=battletanx::campaign_objective_text(
             static_cast<std::size_t>(wave.wave_index)).value_or(std::string_view{});
         hud.result=battletanx::campaign_result_text(
@@ -586,6 +588,8 @@ int main(int argc, char** argv) {
             std::optional<battletanx::RgbaImage> briefing_image;
             if (wave->briefing_image>=0) briefing_image=battletanx::load_campaign_briefing_image(
                 rom,static_cast<std::size_t>(wave->briefing_image));
+            const auto briefing_page=battletanx::load_campaign_briefing_page(
+                rom,static_cast<std::size_t>(wave->wave_index));
             std::optional<battletanx::WorldLevel> active_world;
             std::optional<battletanx::NavigationLevel> active_navigation;
             std::optional<std::vector<std::uint8_t>> active_world_stream;
@@ -646,7 +650,8 @@ int main(int argc, char** argv) {
             if (!show_window) break;
             const auto result=run_platform_diagnostic(
                     *active_world,*active_navigation,angles,bindings,active_assets,
-                    sounds,*music,hud_assets,briefing_image,pickup_models,turret_models,roster_table,*wave,
+                    sounds,*music,hud_assets,briefing_image,briefing_page,
+                    pickup_models,turret_models,roster_table,*wave,
                     battletanx::parse_team_spawn_table(*active_world_stream),
                     *campaign,settings,pak_path,smoke_ticks);
             if (result==WaveRunResult::quit) break;

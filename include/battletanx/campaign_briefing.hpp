@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace battletanx {
@@ -18,9 +19,16 @@ struct CampaignBriefingImage {
     std::uint16_t height{};
 };
 
+struct CampaignBriefingPage {
+    std::uint32_t line_count{};
+    std::string text;
+};
+
 [[nodiscard]] std::span<const CampaignBriefingImage,campaign_briefing_image_count>
 campaign_briefing_images() noexcept;
 [[nodiscard]] RgbaImage load_campaign_briefing_image(const Rom& rom,std::size_t index);
+[[nodiscard]] CampaignBriefingPage load_campaign_briefing_page(
+    const Rom& rom,std::size_t wave_index);
 [[nodiscard]] std::optional<std::string_view> campaign_objective_text(std::size_t wave_index) noexcept;
 [[nodiscard]] std::optional<std::string_view> campaign_result_text(std::size_t wave_index) noexcept;
 

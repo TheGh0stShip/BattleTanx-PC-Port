@@ -63,13 +63,17 @@ int main(int argc,char** argv) {
         const Rom rom=Rom::load_verified(argv[1]);
         const BigEndianView view=rom.view();
         int failures=0;
-        std::size_t briefing_images_decoded=0U;
+        std::size_t briefing_images_decoded=0U, briefing_pages_decoded=0U;
         for (std::size_t index=0U; index<campaign_briefing_image_count; ++index) {
             const auto image=load_campaign_briefing_image(rom,index);
             if (image.width!=campaign_briefing_images()[index].width ||
                 image.height!=campaign_briefing_images()[index].height)
                 throw std::runtime_error("campaign briefing image dimensions changed");
             ++briefing_images_decoded;
+        }
+        for (std::size_t index=0U; index<campaign_wave_count; ++index) {
+            static_cast<void>(load_campaign_briefing_page(rom,index));
+            ++briefing_pages_decoded;
         }
 
         std::size_t word_mismatch=0U;
@@ -193,7 +197,9 @@ int main(int argc,char** argv) {
                   << "spawn_plans_built " << spawn_ok << '/' << campaign_wave_count << '\n'
                   << "runtime_model_sets " << model_ok << '/' << campaign_wave_count << '\n'
                   << "briefing_images_decoded " << briefing_images_decoded << '/'
-                  << campaign_briefing_image_count << '\n';
+                  << campaign_briefing_image_count << '\n'
+                  << "briefing_pages_decoded " << briefing_pages_decoded << '/'
+                  << campaign_wave_count << '\n';
         const CampaignCatalogAudit audit=audit_campaign_catalog();
         std::cout << "catalog_issues " << audit.issues.size() << '\n';
         if (word_mismatch || gun_mismatch || briefing_mismatch || !post_ok || !audit.ok()
