@@ -1,6 +1,7 @@
 #include "battletanx/angle.hpp"
 #include "battletanx/big_endian.hpp"
 #include "battletanx/bundle.hpp"
+#include "battletanx/camera.hpp"
 #include "battletanx/controller_pak.hpp"
 #include "battletanx/gameplay.hpp"
 #include "battletanx/geometry.hpp"
@@ -205,6 +206,15 @@ int main() {
         CHECK(std::abs(angles.cosine(0U)-1.0F)<0.000001F);
         CHECK(std::abs(angles.cosine(0x4000U))<0.000001F);
         CHECK(std::abs(angles.sine(0x14000U)-1.0F)<0.000001F);
+
+        battletanx::PlayerTank camera_tank;
+        const auto camera=battletanx::build_flat_tank_camera(camera_tank,angles);
+        CHECK(std::abs(camera.eye.x)<0.000001F && camera.eye.y==84.0F);
+        CHECK(std::abs(camera.eye.z+242.4F)<0.0001F);
+        CHECK(camera.target.x==0.0F && camera.target.y==-630.0F &&
+              camera.target.z==4227.0F);
+        CHECK(camera.vertical_fov_degrees==37.0F && camera.near_plane==16.0F &&
+              camera.far_plane==5000.0F);
 
         const battletanx::RotatedRect axis_aligned{20,10,-2,2,-1,1,0};
         std::array<battletanx::PlanarPoint,4> corners{};

@@ -54,6 +54,9 @@ does not execute cartridge code.
   tables remain outside this slice.
 - Controller actions are derived from the retail big-endian binding preset;
   host devices only populate the original pad representation.
+- The renderer-facing camera pose retains the tank follow offsets, yaw
+  convention, 0.8 eye pull-in, and retail projection parameters without
+  exposing original camera pointers or matrices.
 - Persistent state uses a standard 32 KiB Controller Pak filesystem image and
   retains the retail 256-byte BattleTanx game-file payload and byte-sum
   checksum. The host supplies durable per-user storage; it does not reinterpret
