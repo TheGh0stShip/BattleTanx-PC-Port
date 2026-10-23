@@ -37,7 +37,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     const auto clock_start=std::chrono::steady_clock::now();
     auto tank=battletanx::spawn_player_tank(world,navigation);
     const auto terrain=battletanx::TerrainSurface::build(world,assets,angles);
-    if (const auto height=terrain.height(tank.x,tank.z)) tank.y=*height;
+    auto terrain_sample=terrain.sample(tank.x,tank.z);
+    if (terrain_sample) tank.y=terrain_sample->height;
     std::cout << "Built native terrain surface: " << terrain.triangle_count()
               << " triangles, player height " << tank.y << '\n';
     battletanx::PlayerProjectilePool projectiles{};
@@ -53,7 +54,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             static_cast<std::uint64_t>(elapsed),ticks_per_second);
         while (game_tick<target_tick) {
             battletanx::update_player_tank(tank,input,world,navigation,angles);
-            if (const auto height=terrain.height(tank.x,tank.z)) tank.y=*height;
+            terrain_sample=terrain.sample(tank.x,tank.z);
+            if (terrain_sample) tank.y=terrain_sample->height;
             battletanx::try_fire_player_projectile(
                 projectiles,tank,input,world,navigation,angles,
                 static_cast<std::int32_t>(game_tick));
@@ -80,10 +82,12 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             tank.heading_degrees*(65536.0F/360.0F));
         const auto turret=static_cast<std::uint16_t>(
             tank.turret_degrees*(65536.0F/360.0F));
-        const auto body=battletanx::yaw_translation_matrix(
-            heading,tank.x,tank.y,tank.z,angles);
-        const auto turret_transform=battletanx::yaw_translation_matrix(
-            turret,tank.x,tank.y,tank.z,angles);
+        const std::array<float,3> ground_normal=terrain_sample ? terrain_sample->normal :
+            std::array<float,3>{0.0F,1.0F,0.0F};
+        const auto body=battletanx::terrain_yaw_translation_matrix(
+            heading,tank.x,tank.y,tank.z,ground_normal,angles);
+        const auto turret_transform=battletanx::terrain_yaw_translation_matrix(
+            turret,tank.x,tank.y,tank.z,ground_normal,angles);
         for (const std::uint32_t slot:{0x0BU,0x0CU,0x0EU}) {
             draw.items.push_back({assets.set_base()+slot,body,1U,0});
         }

@@ -51,6 +51,35 @@ Matrix4 yaw_translation_matrix(std::uint16_t angle,float x,float y,float z,
     return {cosine,0,sine,x, 0,1,0,y, -sine,0,cosine,z, 0,0,0,1};
 }
 
+Matrix4 terrain_yaw_translation_matrix(
+    std::uint16_t angle,float x,float y,float z,const std::array<float,3>& normal,
+    const AngleTable& angles) noexcept {
+    const float sine=angles.sine(angle);
+    const float cosine=angles.cosine(angle);
+    const float normal_length=std::sqrt(
+        normal[0]*normal[0]+normal[1]*normal[1]+normal[2]*normal[2]);
+    if (!(normal_length>0.000001F)) {
+        return yaw_translation_matrix(angle,x,y,z,angles);
+    }
+    const CameraVector up{normal[0]/normal_length,normal[1]/normal_length,
+                          normal[2]/normal_length};
+    const float projection=sine*up.x+cosine*up.z;
+    CameraVector forward{sine-projection*up.x,-projection*up.y,
+                         cosine-projection*up.z};
+    const float forward_length=std::sqrt(dot(forward,forward));
+    if (!(forward_length>0.000001F)) {
+        return yaw_translation_matrix(angle,x,y,z,angles);
+    }
+    forward={forward.x/forward_length,forward.y/forward_length,
+             forward.z/forward_length};
+    const CameraVector right=cross(up,forward);
+    forward=cross(right,up);
+    return {right.x,up.x,forward.x,x,
+            right.y,up.y,forward.y,y,
+            right.z,up.z,forward.z,z,
+            0,0,0,1};
+}
+
 Matrix4 look_at_matrix(const CameraVector& eye,const CameraVector& target,
                        const CameraVector& up) {
     const CameraVector forward=normalized(subtract(target,eye));

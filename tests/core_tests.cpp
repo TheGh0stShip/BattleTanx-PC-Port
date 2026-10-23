@@ -86,6 +86,9 @@ int main() {
                                                       {0.0F,30.0F,10.0F}}}};
         const auto height=battletanx::terrain_triangle_height(triangle,2.5F,2.5F);
         CHECK(height && std::abs(*height-17.5F)<0.00001F);
+        const auto sample=battletanx::terrain_triangle_sample(triangle,2.5F,2.5F);
+        CHECK(sample && std::abs(sample->height-17.5F)<0.00001F);
+        CHECK(sample->normal[1]>0.0F);
         CHECK(!battletanx::terrain_triangle_height(triangle,20.0F,20.0F));
     }
     {
@@ -95,6 +98,18 @@ int main() {
         CHECK(std::abs(projection[5]-2.98868F)<0.0001F);
         CHECK(std::abs(projection[10]+1.00642F)<0.0001F);
         CHECK(std::abs(projection[11]+32.1027F)<0.001F);
+        std::array<float,battletanx::AngleTable::value_count> angle_samples{};
+        angle_samples[64U]=1.0F;
+        const battletanx::AngleTable test_angles(angle_samples);
+        const auto aligned=battletanx::terrain_yaw_translation_matrix(
+            0U,10.0F,20.0F,30.0F,{0.0F,1.0F,0.0F},test_angles);
+        CHECK(aligned[0]==1.0F && aligned[5]==1.0F && aligned[10]==1.0F);
+        CHECK(aligned[3]==10.0F && aligned[7]==20.0F && aligned[11]==30.0F);
+        const auto sloped=battletanx::terrain_yaw_translation_matrix(
+            0U,0.0F,0.0F,0.0F,{0.0F,1.0F,1.0F},test_angles);
+        CHECK(std::abs(sloped[1])<0.00001F);
+        CHECK(std::abs(sloped[5]-0.7071067F)<0.0001F);
+        CHECK(std::abs(sloped[9]-0.7071067F)<0.0001F);
     }
 
     {

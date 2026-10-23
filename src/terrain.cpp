@@ -7,6 +7,12 @@ namespace battletanx {
 
 std::optional<float> terrain_triangle_height(
     const TerrainTriangle& triangle,float x,float z) noexcept {
+    const auto sample=terrain_triangle_sample(triangle,x,z);
+    return sample ? std::optional<float>(sample->height) : std::nullopt;
+}
+
+std::optional<TerrainSample> terrain_triangle_sample(
+    const TerrainTriangle& triangle,float x,float z) noexcept {
     const auto& a=triangle.vertices[0];
     const auto& b=triangle.vertices[1];
     const auto& c=triangle.vertices[2];
@@ -17,7 +23,26 @@ std::optional<float> terrain_triangle_height(
     const float third=1.0F-first-second;
     constexpr float tolerance=-0.0001F;
     if (first<tolerance || second<tolerance || third<tolerance) return std::nullopt;
-    return first*a.y+second*b.y+third*c.y;
+    const float edge_ab_x=b.x-a.x;
+    const float edge_ab_y=b.y-a.y;
+    const float edge_ab_z=b.z-a.z;
+    const float edge_ac_x=c.x-a.x;
+    const float edge_ac_y=c.y-a.y;
+    const float edge_ac_z=c.z-a.z;
+    std::array<float,3> normal{
+        edge_ab_y*edge_ac_z-edge_ab_z*edge_ac_y,
+        edge_ab_z*edge_ac_x-edge_ab_x*edge_ac_z,
+        edge_ab_x*edge_ac_y-edge_ab_y*edge_ac_x};
+    if (normal[1]<0.0F) {
+        normal[0]=-normal[0];
+        normal[1]=-normal[1];
+        normal[2]=-normal[2];
+    }
+    const float length=std::sqrt(
+        normal[0]*normal[0]+normal[1]*normal[1]+normal[2]*normal[2]);
+    if (!(length>0.000001F)) return std::nullopt;
+    for (float& component:normal) component/=length;
+    return TerrainSample{first*a.y+second*b.y+third*c.y,normal};
 }
 
 TerrainSurface TerrainSurface::build(const WorldLevel& world,const ModelAssets& assets,
@@ -48,10 +73,15 @@ TerrainSurface TerrainSurface::build(const WorldLevel& world,const ModelAssets& 
 }
 
 std::optional<float> TerrainSurface::height(float x,float z) const noexcept {
-    std::optional<float> result;
+    const auto result=sample(x,z);
+    return result ? std::optional<float>(result->height) : std::nullopt;
+}
+
+std::optional<TerrainSample> TerrainSurface::sample(float x,float z) const noexcept {
+    std::optional<TerrainSample> result;
     for (const auto& triangle:triangles_) {
-        const auto candidate=terrain_triangle_height(triangle,x,z);
-        if (candidate && (!result || *candidate>*result)) result=candidate;
+        const auto candidate=terrain_triangle_sample(triangle,x,z);
+        if (candidate && (!result || candidate->height>result->height)) result=candidate;
     }
     return result;
 }
