@@ -68,6 +68,10 @@ int main() {
     CHECK(battletanx::filled_health_segments(1,100)==0U);
     CHECK(battletanx::filled_health_segments(0,100)==0U);
     CHECK(battletanx::filled_health_segments(100,0)==0U);
+    CHECK(battletanx::secondary_weapon_icon(4U)==1U);
+    CHECK(battletanx::secondary_weapon_icon(12U)==11U);
+    CHECK(!battletanx::secondary_weapon_icon(13U));
+    CHECK(!battletanx::secondary_weapon_icon(3U));
     CHECK(battletanx::level_one_hud_map_position(0.0F,0.0F).x==30);
     CHECK(battletanx::level_one_hud_map_position(0.0F,0.0F).y==30);
     CHECK(battletanx::level_one_hud_map_position(4375.0F,4375.0F).x==59);
@@ -93,6 +97,8 @@ int main() {
     state.health=50;
     state.max_health=100;
     state.primary_ammo=70;
+    state.secondary_weapon=12U;
+    state.secondary_ammo=15;
     state.score=1000;
     assets.level_map=battletanx::RgbaImage{60U,60U,
         std::vector<std::uint32_t>(60U*60U,0x80404040U)};
@@ -105,6 +111,7 @@ int main() {
     const auto empty_pixel=framebuffer[32U*640U+326U];
     CHECK(health_pixel!=empty_pixel);
     CHECK(framebuffer[318U*640U+50U]!=0x00101820U);
+    CHECK(framebuffer[82U*640U+500U]!=0x00101820U);
 
     state.match_state=battletanx::MatchState::paused;
     const auto before=framebuffer;

@@ -49,6 +49,8 @@ struct HudState {
     std::int32_t health{};
     std::int32_t max_health{};
     std::int32_t primary_ammo{};
+    std::uint8_t secondary_weapon{};
+    std::int32_t secondary_ammo{};
     std::int32_t score{};
     std::int32_t frames_remaining{};
     MatchState match_state{MatchState::live};
@@ -67,6 +69,8 @@ struct HudState {
 [[nodiscard]] HudAssets load_hud_assets(const Rom& rom);
 [[nodiscard]] std::size_t filled_health_segments(
     std::int32_t health,std::int32_t max_health) noexcept;
+[[nodiscard]] std::optional<std::size_t> secondary_weapon_icon(
+    std::uint8_t weapon,std::size_t image_count=retail_hud_image_count) noexcept;
 [[nodiscard]] HudMapPosition level_one_hud_map_position(float x,float z) noexcept;
 void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
                      const HudAssets& assets,const HudState& state);

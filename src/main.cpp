@@ -803,6 +803,9 @@ WaveRunResult run_platform_diagnostic(battletanx::Platform& platform,
                 hud.health=player->health;
                 hud.max_health=player->max_health;
                 hud.primary_ammo=player->ammo[player->primary_weapon.kind];
+                hud.secondary_weapon=player->secondary_weapon.kind;
+                if (player->secondary_weapon.kind<player->ammo.size())
+                    hud.secondary_ammo=player->ammo[player->secondary_weapon.kind];
             }
         }
         if (result_frontend) {

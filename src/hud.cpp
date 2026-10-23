@@ -25,6 +25,10 @@ constexpr int level_map_left=0x19;
 constexpr int level_map_top=0xDB-level_map_height;
 constexpr float level_map_world_width=4375.0F;
 constexpr float level_map_world_depth=4375.0F;
+// D_8014165C. Weapon 13 names image 23 even though the decoded single-player
+// HUD pack contains images 0..22; preserve the table and reject that bad index.
+constexpr std::array<std::uint8_t,17> weapon_icon_index{
+    0U,0U,0U,0U,1U,9U,12U,5U,0U,0U,12U,6U,11U,23U,20U,2U,7U};
 
 std::uint32_t be32(std::span<const std::uint8_t> bytes,std::size_t offset) {
     if (offset>bytes.size() || bytes.size()-offset<4U)
@@ -348,6 +352,13 @@ std::size_t filled_health_segments(std::int32_t health,std::int32_t max_health) 
         static_cast<double>(clamped)/static_cast<double>(max_health)*16.0));
 }
 
+std::optional<std::size_t> secondary_weapon_icon(
+    std::uint8_t weapon,std::size_t image_count) noexcept {
+    if (weapon>=weapon_icon_index.size() || weapon<4U) return std::nullopt;
+    const std::size_t icon=weapon_icon_index[weapon];
+    return icon<image_count ? std::optional<std::size_t>{icon} : std::nullopt;
+}
+
 HudMapPosition level_one_hud_map_position(float x,float z) noexcept {
     if (!std::isfinite(x) || !std::isfinite(z)) return {level_map_width/2,level_map_height/2};
     const int map_x=level_map_width/2+static_cast<int>(
@@ -394,6 +405,23 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
         sprite_region(pixels,width,height,assets.images[7],
                       0x7B+static_cast<int>(segment)*5,0x10,
                       segment<filled ? 0xFFC83200U : 0xFF202020U,5U,8U);
+    if (state.secondary_weapon!=0U) {
+        // Retail extends the weapon backing panel from y=0x10 to y=0x29 and
+        // places the selected special icon at (0xF7,0x21), with ammo at
+        // (0x117,0x28). The native HUD uses the same logical 320x240 grid.
+        sprite_region(pixels,width,height,assets.images[4],0xF4,0x10,
+                      0xFFD2D2D2U,std::min<std::uint32_t>(0x30U,assets.images[4].width),
+                      std::min<std::uint32_t>(0x19U,assets.images[4].height));
+        if (const auto icon=secondary_weapon_icon(
+                state.secondary_weapon,assets.images.size())) {
+            sprite_region(pixels,width,height,assets.images[*icon],0xF7,0x21,
+                          0xFFFFFFFFU,std::min<std::uint32_t>(20U,assets.images[*icon].width),
+                          std::min<std::uint32_t>(20U,assets.images[*icon].height));
+        }
+        hud_number(pixels,width,height,assets,state.secondary_ammo,
+                   0x117*coordinate_scale,0x28*coordinate_scale,
+                   coordinate_scale,0xFFFFFFFFU);
+    }
     sprite(pixels,width,height,assets.images[18],270,8,0xFFFFFFFFU);
     hud_number(pixels,width,height,assets,state.primary_ammo,278*coordinate_scale,
                39*coordinate_scale,coordinate_scale,0xFFFFFFFFU);
