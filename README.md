@@ -1,33 +1,136 @@
 # BattleTanx PC Port
 
-This project is a native Linux and Windows source port of **BattleTanx** for
-Nintendo 64 (USA Rev 0). It is under active development and is not yet a
-complete recreation of every campaign system. The current build provides a
-playable native combat slice using the first campaign level's recovered world,
-unit placements, pickups, controller bindings, and save format.
+[![Build](https://github.com/TheGh0stShip/BattleTanx-PC-Port/actions/workflows/build.yml/badge.svg)](https://github.com/TheGh0stShip/BattleTanx-PC-Port/actions/workflows/build.yml)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](COPYING)
 
-The port consumes game data from a legally obtained retail ROM supplied by the
-user. ROMs, extracted assets, generated files, and retail game data must never
-be committed or included in release packages.
+A native source port of **BattleTanx** for Linux and Windows, built from the
+matching decompilation of the Nintendo 64 USA Rev 0 release.
+
+The port is under active development. It currently provides native rendering,
+audio, input, saving, and a playable campaign battle, but it is not yet a
+complete replacement for the original game. See [Project status](#project-status)
+for the current scope.
+
+This project does not include game data. You must supply your own legally
+obtained copy of the supported retail ROM.
+
+## Features
+
+- Native Linux and Windows executables
+- Keyboard and hot-pluggable SDL game-controller support
+- Controller rumble and up to four assigned controller ports
+- Native software rendering of decoded retail worlds, models, textures, and HUD
+- Native sound-effect and music playback
+- Original 30 Hz gameplay timing and recovered tank, weapon, collision, enemy,
+  pickup, and mission behavior
+- Original Controller Pak save format in a standard 32 KiB `.mpk` image
+- Windowed and borderless-fullscreen modes
+- Portable installations with local settings and saves
+- ROM-free release packages
+
+This is a source port, not an emulator. The executable contains native C++
+implementations of recovered game behavior and host platform services. The ROM
+is opened read-only as a source of retail game data.
+
+## Quick start
+
+Download a package from a successful
+[workflow run](https://github.com/TheGh0stShip/BattleTanx-PC-Port/actions/workflows/build.yml),
+extract it, and launch the executable with the path to your ROM:
+
+### Linux
+
+```sh
+./BattleTanx /absolute/path/to/BattleTanx.z64
+```
+
+### Windows
+
+```powershell
+.\BattleTanx.exe C:\Games\BattleTanx.z64
+```
+
+The verified ROM path is remembered after the first successful launch. To
+check a ROM without starting the game, use:
+
+```sh
+BattleTanx --validate /path/to/BattleTanx.z64
+```
 
 ## Supported ROM
 
-- Format: big-endian `.z64`
-- Region/revision: USA, Rev 0 (`NBXE`)
-- Size: 8 MiB
-- SHA-256: `c5b7cf3523de025e3f18e2c8df2deb0eced5613e7c46cb8c6c5a4f22644ead3f`
+| Property | Required value |
+|---|---|
+| Game | BattleTanx |
+| Region and revision | USA, Rev 0 (`NBXE`) |
+| Format | Big-endian `.z64` |
+| Size | 8 MiB |
+| SHA-256 | `c5b7cf3523de025e3f18e2c8df2deb0eced5613e7c46cb8c6c5a4f22644ead3f` |
 
-## Linux build
+Other regions, revisions, byte orders, and modified ROMs are not supported.
+ROMs and extracted game assets must not be added to this repository or included
+in distribution packages.
+
+## Controls
+
+Press **Start** or **Enter** to begin. The default retail control preset keeps
+the turret aligned with the hull.
+
+| Action | Keyboard | Controller |
+|---|---|---|
+| Drive and steer | **W A S D** | Left stick |
+| Fire cannon / N64 Z | **Left Shift** | Either trigger |
+| N64 A | **X** | South face button |
+| N64 B | **Z** | East or west face button |
+| Start / pause | **Enter** | Start |
+| N64 L / R | **Q / E** | Left / right shoulder |
+| D-pad | Arrow keys | D-pad |
+| C buttons | **I J K L** | Right stick |
+| Toggle fullscreen | **F11** or **Alt+Enter** | — |
+| Quit | **Escape** | — |
+
+Controllers can be connected or removed while the game is running. They are
+assigned to ports in connection order. Keyboard input remains available for
+port one.
+
+## Saves and settings
+
+BattleTanx saves to a Controller Pak. The port stores the original game record
+inside `battletanx-pak1.mpk`, a standard 32 KiB Controller Pak filesystem image
+compatible with common N64 save tools. The original record layout and checksum
+are retained.
+
+PC-specific options are stored separately in `settings.ini` and include:
+
+- Window mode and dimensions
+- Master, music, and effects volume
+- Controller deadzone, sensitivity, and rumble strength
+- The last verified ROM path
+
+By default, writable files use the operating system's per-user data directory.
+Place an empty `portable.txt` beside the executable to keep them in a neighboring
+`userdata` directory instead. `BATTLETANX_DATA_DIR` can override the location
+for scripted or shared installations.
+
+## Building from source
+
+Requirements:
+
+- CMake 3.20 or newer
+- A C++20 compiler
+- Git, used by CMake to obtain the pinned SDL2 dependency
+- Ninja or another CMake-supported build tool
+
+### Linux
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ./build/BattleTanx /absolute/path/to/BattleTanx.z64
-./build/BattleTanx --validate /absolute/path/to/BattleTanx.z64
 ```
 
-## Windows build
+### Windows
 
 Open a Developer PowerShell for Visual Studio 2022, then run:
 
@@ -35,175 +138,68 @@ Open a Developer PowerShell for Visual Studio 2022, then run:
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
-./build/BattleTanx.exe C:\Games\BattleTanx.z64
-./build/BattleTanx.exe --validate C:\Games\BattleTanx.z64
+.\build\BattleTanx.exe C:\Games\BattleTanx.z64
 ```
 
-## Install and portable packages
+The build downloads SDL2 source at configure time and links it statically. No
+retail game data is generated, copied, or embedded during the build.
 
-The executable has no bundled game data. Keep your legally obtained ROM
-outside the source tree and pass its path when launching the game.
+## Installing and packaging
 
-Install a locally built executable and this README into a directory of your
-choice:
+Install a local ROM-free build:
 
 ```sh
 cmake --install build --prefix ./BattleTanx-PC
-./BattleTanx-PC/BattleTanx /absolute/path/to/BattleTanx.z64
 ```
 
-With a Visual Studio multi-configuration build on Windows, select the release
-configuration explicitly:
+For a multi-configuration Visual Studio build, add `--config Release`.
 
-```powershell
-cmake --install build --config Release --prefix .\BattleTanx-PC
-.\BattleTanx-PC\BattleTanx.exe C:\Games\BattleTanx.z64
-```
-
-To create the same ROM-free archive produced by continuous integration, run:
+Create the same archive format used by continuous integration:
 
 ```sh
 cmake --build build --target package --parallel
 ```
 
-Configure with `-DBATTLETANX_PORTABLE=ON` to add the portable marker and a
-`-portable` package suffix.
+Linux packages are `.tar.gz` archives and Windows packages are `.zip` archives.
+Each package contains the executable, README, and license. A SHA-256 sidecar is
+generated beside the archive. Neither contains a ROM or extracted retail assets.
 
-Linux packages are `.tar.gz` archives and Windows packages are `.zip`
-archives. Each contains the executable, README, and license text. A SHA-256
-sidecar is generated beside each archive. Extract the archive anywhere, then
-launch `BattleTanx` (`BattleTanx.exe` on Windows) with the ROM path. Official
-build artifacts are available from successful workflow runs; they
-intentionally contain neither a ROM nor extracted retail assets.
+Configure with `-DBATTLETANX_PORTABLE=ON` to include `portable.txt` and add a
+`-portable` suffix to the package name.
 
-The runtime remembers the last verified ROM, so subsequent launches need no
-argument. Place an empty `portable.txt` beside the executable to keep settings
-and the Controller Pak under a neighboring `userdata` directory. Otherwise it
-uses the standard per-user data directory. `BATTLETANX_DATA_DIR` provides an
-explicit override for scripted or shared installations.
+## Project status
 
-The current executable implements the portable build and ROM-loading boundary.
-It validates the complete ROM, decompresses all 21 audited retail resource
-bundles, and validates their offset tables before exposing entries to the
-native runtime. Each original loader's destination capacity remains enforced.
-It also decodes and validates all 22 recovered world streams and all 18
-navigation streams, including group-to-placement ranges, shape references,
-navigation vertex references, and triangle adjacency bounds.
-Recovered navigation operations provide triangle centroids, edge midpoints,
-strict point containment, blocked-kind filtering, and the original octagonal
-nearest-cell search used during route initialization. Native straight-line
-route traversal follows the recovered corner-adjacency rules and reports
-target, boundary, blocked-cell, and retail 248-step limit outcomes.
-The portable core contains deterministic recovered controller-state and
-planar-motion behavior covered by host tests. The default controller binding
-preset is decoded from the verified retail ROM and evaluated with the recovered
-analog/digital axis rules. The native battle session owns generation-checked
-unit and projectile pools, player and computer control, target acquisition,
-cannon fire, ammunition, damage, destruction, scoring, pickups, match results,
-and respawning. The current M1A1 drive slice uses its recovered retail turn,
-acceleration, grip, drag, and rotated footprint. Tank and shell collision uses
-the recovered level-object type filter, each object's rotated level shape, and
-the decoded navigation boundaries.
-The current native presentation decodes and draws the retail world and tank
-meshes with their textures through a host-owned software z-buffer. The tank
-meshes and attached camera follow the decoded terrain height and surface normal.
-The tank shadow uses its recovered translucent texture and render layer.
-The camera contracts toward the tank when its eye path crosses a registered
-static world footprint.
-Several uncommon material modes remain bring-up work rather than a claim of
-complete retail rendering fidelity.
-The original interpolated 16-bit angle behavior reads its 257-sample sine
-table directly from the verified ROM rather than embedding retail data.
-Recovered rotated-bound geometry uses the same angle path and preserves the
-game's corner ordering for later collision and world-query integration.
-The native asset path now validates model sets, LOD ranges, parts, material and
-geometry pool bounds, and decodes the retail vertex/triangle command stream.
-Level-one assets are cached as host meshes and materials. Supported texture
-decoders cover the five formats used by these assets: RGBA16, CI4 with TLUT,
-RGBA32, I4, and I8. Recovered fixed, full-speed, and half-speed material-frame
-selection drives texture scrolling and CI4 palette animation, including
-independent tank tread phases.
-No original display commands are executed at runtime.
+The current build launches the campaign wave selected by the original save,
+loads its retail world and population data, and runs a native battle with tank
+movement, enemies, cannon combat, pickups, HUD, audio, mission results,
+respawning, and Controller Pak progress updates.
 
-The native audio path decodes all 49 retail sound effects from the verified
-ROM into host PCM and mixes active one-shot voices through SDL at 44.1 kHz.
-Gameplay fire, impact, destruction, pickup, and empty-ammunition events are
-routed to this bounded stereo mixer, with simple listener-relative panning for
-positional sounds. The first campaign track is rendered from its retail MIDI
-sequence and 29-sample instrument bank, looped through the same native mixer,
-and scaled by the original saved music-volume setting. The recovered looping
-engine and skid voices respond to vehicle speed and stop with the player unit.
+Work still in progress includes:
 
-Normal launch runs the native gameplay runtime through the pinned SDL2 host
-library. It creates a native Linux or Windows window, maps keyboard and game
-controllers to the original controller representation, and presents a native
-pixel surface. It does not execute or translate N64 code. Its recovered
-tank-following camera renders decoded level-one retail placements and starts a
-player tank from the decoded retail group-zero spawn marker on the decoded
-navigation mesh. The same battle loads all three enemy tank placements and 51
-pickup placements from that level's retail entity-bank group. Enemies acquire and
-engage the player, cannon shells damage units and world obstacles, destroyed
-tanks affect the mission result, and the player can respawn from the recovered
-30 Hz match-state flow.
+- Complete campaign flow, menus, intermissions, and level transitions
+- Full objective interactions for queen-based missions
+- Remaining scripted enemy behaviors, weapons, effects, and pickup cases
+- Complete music selection and uncommon material/rendering modes
+- Broader playthrough, controller, platform, and long-session validation
 
-Press Start or Enter to begin. Drive with the left stick or WASD and hold
-either trigger or Left Shift to fire the cannon at its original repeat
-interval. Start or Enter pauses and resumes the match. The default retail
-control preset keeps the turret aligned with the hull. Movement and projectile
-travel stop at navigation boundaries, blocked cells, and registered static
-world shapes. F11 or Alt+Enter toggles borderless fullscreen. Escape or
-closing the window exits.
+Missing or approximate behavior is tracked as development work; it is not
+presented as retail-complete. Architecture and portability details are kept in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-Host settings are stored in `settings.ini`. They cover window mode and size,
-master/music/effects gain, controller deadzone and sensitivity, rumble
-strength, and the remembered ROM path. Retail music/effects volume values in
-the original Controller Pak remain active and are multiplied by the host gains.
+## Contributing
 
-The current playable slice is not yet the complete campaign. Remaining work
-includes campaign menus and level transitions, recovered scripted enemy goals,
-the remaining weapons and effects, full pickup behavior, the remaining music
-selection paths, and several uncommon render modes. The player tank now uses
-the retail looping engine and skid sounds with speed-driven pitch and volume.
+Bug reports and focused pull requests are welcome. Please keep changes within
+the native source-port architecture, include tests for portable core behavior,
+and verify both the Linux and Windows build paths where practical.
 
-Up to four hot-pluggable SDL game controllers are assigned to ports in
-connection order. The left stick supplies the N64 analog stick, the D-pad and
-shoulders map directly, either trigger supplies Z, the south face button
-supplies A, either adjacent face button supplies B, Start supplies Start, and
-the right stick supplies the four C buttons. Keyboard controls remain
-available for port one: WASD, X/Z, Left Shift, Enter, Q/E, arrows, and
-I/J/K/L.
-
-## Saves
-
-BattleTanx uses a Controller Pak rather than cartridge EEPROM. The native
-runtime mounts `battletanx-pak1.mpk` in its per-user or portable data
-directory. It is a standard 32 KiB Controller Pak filesystem image, compatible
-with common N64 tools, containing BattleTanx's original 256-byte game file.
-The game file's first big-endian word is the recovered retail checksum over
-bytes 4 through 255. Reads reject bad filesystem metadata, size, chains, or
-game checksums, and writes are read back and verified, matching the retail save
-path's integrity checks. The runtime parses the recovered campaign fields,
-preserves unknown bytes, applies saved unlimited-ammunition state, and writes
-the updated mission and score record after a successful battle.
-
-## Architecture
-
-The original game uses big-endian, 32-bit N64 data and address tokens. The PC
-runtime uses explicit-width integers and bounds-checked big-endian readers at
-serialized boundaries. N64 addresses are never cast to native pointers.
-
-Recovered gameplay behavior will enter the portable target in reviewed slices.
-The matching N64 project remains a separate regression oracle and is not a PC
-build configuration.
-
-This project does not emulate the N64. The executable contains native source
-implementations of recovered behavior and native platform services. It does
-not contain a MIPS interpreter or translator, RSP/RDP emulation, generated CPU
-translation, libultra compatibility runtime, or emulated N64 address space.
-The verified ROM is opened strictly as a read-only source of retail game data.
+Do not submit ROMs, extracted assets, generated assembly, binaries, crash dumps,
+or other copyrighted retail data. The matching decompilation and this native
+port have separate responsibilities; portability changes belong here.
 
 ## License
 
-Project source is licensed under GPL-3.0-or-later. BattleTanx and its game data
-remain the property of their respective owners.
+Project source is licensed under GPL-3.0-or-later. See [COPYING](COPYING).
 
+BattleTanx and all original game data remain the property of their respective
+owners. This project is not affiliated with or endorsed by the game's original
+publisher or developers.
