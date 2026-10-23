@@ -36,7 +36,7 @@ class SdlPlatform final : public Platform {
   public:
     explicit SdlPlatform(std::string_view title) {
         SDL_SetMainReady();
-        if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_GAMECONTROLLER|SDL_INIT_HAPTIC)!=0) {
+        if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_GAMECONTROLLER|SDL_INIT_HAPTIC)!=0) {
             const auto error=sdl_error("SDL initialization failed");
             SDL_Quit();
             throw error;
@@ -77,13 +77,13 @@ class SdlPlatform final : public Platform {
         desired.samples=1024U;
         desired.callback=&SdlPlatform::audio_callback;
         desired.userdata=this;
-        audio_device_=SDL_OpenAudioDevice(nullptr,0,&desired,&audio_spec_,0);
-        if (audio_device_==0U) {
-            // Video and input remain fully usable on machines without an
-            // available output device. Retain the requested format so asset
-            // validation stays deterministic, and run with muted audio.
-            audio_spec_=desired;
+        audio_spec_=desired;
+        if (SDL_InitSubSystem(SDL_INIT_AUDIO)==0) {
+            audio_device_=SDL_OpenAudioDevice(nullptr,0,&desired,&audio_spec_,0);
         }
+        // Video and input remain fully usable when the audio subsystem or
+        // output device is unavailable. The requested format remains stored
+        // so asset validation stays deterministic while playback is muted.
         voices_.reserve(64U);
         if (audio_device_!=0U) SDL_PauseAudioDevice(audio_device_,0);
         for (int index=0; index<SDL_NumJoysticks(); ++index) open_controller(index);
