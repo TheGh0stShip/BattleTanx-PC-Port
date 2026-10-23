@@ -68,10 +68,10 @@ pixel surface. It does not execute or translate N64 code. Its tank-following
 bring-up view plots nearby decoded level-one retail placements and starts a
 player tank from the decoded retail
 group-zero spawn marker on open navigation data.
-Drive with the left stick or WASD and fire the current test projectile with the
-south face button or X. The right stick or J/L rotates the turret. Movement
-and projectile travel stop at navigation boundaries and blocked cells. Escape
-or closing the window exits.
+Drive with the left stick or WASD and fire the current cannon shell with the
+left trigger or Left Shift. The default retail control preset keeps the turret
+aligned with the hull. Movement and projectile travel stop at navigation
+boundaries and blocked cells. Escape or closing the window exits.
 
 Up to four hot-pluggable SDL game controllers are assigned to ports in
 connection order. The left stick supplies the N64 analog stick, the D-pad and

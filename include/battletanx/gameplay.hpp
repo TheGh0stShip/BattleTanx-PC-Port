@@ -44,6 +44,8 @@ struct PlayerTank {
     float heading_degrees{};
     float turret_degrees{};
     std::uint16_t navigation_triangle{};
+    std::int32_t primary_last_tick{-1000};
+    std::int16_t primary_ammo{70};
 };
 
 struct PlayerProjectile {
@@ -62,9 +64,9 @@ PlayerInput translate_player_input(const ControllerPad& current,
 PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navigation);
 void update_player_tank(PlayerTank& tank,const PlayerInput& input,
                         const NavigationLevel& navigation,const AngleTable& angles);
-bool try_fire_player_projectile(PlayerProjectile& projectile,const PlayerTank& tank,
+bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
                                 const PlayerInput& input,const NavigationLevel& navigation,
-                                const AngleTable& angles);
+                                const AngleTable& angles,std::int32_t game_tick);
 void update_player_projectile(PlayerProjectile& projectile,
                               const NavigationLevel& navigation);
 

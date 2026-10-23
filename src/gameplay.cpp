@@ -7,9 +7,7 @@
 namespace battletanx {
 namespace {
 constexpr double kStationaryThreshold=0.5;
-constexpr std::uint32_t button_a=0x8000U;
-constexpr std::uint32_t button_c_left=0x0002U;
-constexpr std::uint32_t button_c_right=0x0001U;
+constexpr std::uint32_t button_z=0x2000U;
 
 float wrap_degrees(float value) {
     while (value>360.0F) value-=360.0F;
@@ -71,8 +69,13 @@ PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navi
                 !navigation_point_inside_triangle(
                     navigation,position,static_cast<std::uint16_t>(index))) continue;
             const float heading=static_cast<float>(item.angle)*(360.0F/65536.0F);
-            return PlayerTank{position.x,position.z,0.0F,0.0F,heading,heading,
-                              static_cast<std::uint16_t>(index)};
+            PlayerTank tank;
+            tank.x=position.x;
+            tank.z=position.z;
+            tank.heading_degrees=heading;
+            tank.turret_degrees=heading;
+            tank.navigation_triangle=static_cast<std::uint16_t>(index);
+            return tank;
         }
         throw std::runtime_error("player spawn marker is outside open navigation data");
     }
@@ -86,14 +89,14 @@ void update_player_tank(PlayerTank& tank,const PlayerInput& input,
     constexpr float acceleration_scale=1.0F/100.0F;
     constexpr float grip=300.0F;
     constexpr float drag=250.0F;
-    const float steering=std::clamp(static_cast<float>(input.stick_x),-80.0F,80.0F);
-    const float throttle=std::clamp(static_cast<float>(input.stick_y),-80.0F,80.0F);
-    const float turret_aim=(input.held&button_c_left ? 80.0F : 0.0F)-
-                           (input.held&button_c_right ? 80.0F : 0.0F);
+    float steering=std::abs(static_cast<float>(input.stick_x))>3.0F
+        ? static_cast<float>(input.stick_x) : 0.0F;
+    const float throttle=std::abs(static_cast<float>(input.stick_y))>3.0F
+        ? std::clamp(static_cast<float>(input.stick_y),-200.0F,200.0F) : 0.0F;
+    if (tank.velocity_x<5.0F && tank.velocity_z<5.0F) steering*=1.5F;
     const float turn=steering*turn_acceleration*frame_rate_scale;
     tank.heading_degrees=wrap_degrees(tank.heading_degrees-turn);
-    tank.turret_degrees=wrap_degrees(
-        tank.turret_degrees-turn+turret_aim*turn_acceleration*frame_rate_scale);
+    tank.turret_degrees=wrap_degrees(tank.turret_degrees-turn);
 
     const auto angle=degrees_to_angle(tank.heading_degrees);
     PlanarMotion motion{};
@@ -106,6 +109,8 @@ void update_player_tank(PlayerTank& tank,const PlayerInput& input,
     motion.acceleration_x=grip*throttle*angles.sine(angle)-tank.velocity_x*drag;
     motion.acceleration_z=grip*throttle*angles.cosine(angle)-tank.velocity_z*drag;
     advance_planar_motion(motion,frame_rate_scale);
+    motion.velocity_x=std::clamp(motion.velocity_x,-512.0F,512.0F);
+    motion.velocity_z=std::clamp(motion.velocity_z,-512.0F,512.0F);
     const NavigationVertex from{tank.x,tank.z};
     const NavigationVertex candidate{motion.x,motion.z};
     const auto trace=trace_navigation_segment(
@@ -122,12 +127,14 @@ void update_player_tank(PlayerTank& tank,const PlayerInput& input,
     }
 }
 
-bool try_fire_player_projectile(PlayerProjectile& projectile,const PlayerTank& tank,
+bool try_fire_player_projectile(PlayerProjectile& projectile,PlayerTank& tank,
                                 const PlayerInput& input,const NavigationLevel& navigation,
-                                const AngleTable& angles) {
-    if (projectile.active || (input.held&button_a)==0U) return false;
-    constexpr float muzzle_offset=28.0F;
-    constexpr float projectile_speed=18.0F;
+                                const AngleTable& angles,std::int32_t game_tick) {
+    constexpr std::int32_t cooldown=30;
+    if (projectile.active || (input.held&button_z)==0U || tank.primary_ammo<=0 ||
+        tank.primary_last_tick+cooldown>=game_tick) return false;
+    constexpr float muzzle_offset=45.0F;
+    constexpr float projectile_speed=110.0F;
     const auto angle=degrees_to_angle(tank.turret_degrees);
     const float direction_x=angles.sine(angle);
     const float direction_z=angles.cosine(angle);
@@ -139,7 +146,9 @@ bool try_fire_player_projectile(PlayerProjectile& projectile,const PlayerTank& t
     if (trace.stop!=NavigationTraceStop::target) return false;
     projectile={muzzle.x,muzzle.z,
                 direction_x*projectile_speed,direction_z*projectile_speed,
-                trace.triangle,120U,true};
+                trace.triangle,112U,true};
+    tank.primary_last_tick=game_tick;
+    --tank.primary_ammo;
     return true;
 }
 

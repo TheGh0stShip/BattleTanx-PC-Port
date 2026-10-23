@@ -264,16 +264,23 @@ int main() {
         CHECK(tank.x>start_x && tank.navigation_triangle==1U);
         battletanx::PlayerProjectile projectile{};
         battletanx::PlayerInput fire{};
-        fire.held=0x8000U;
-        fire.pressed=0x8000U;
+        fire.held=0x2000U;
+        fire.pressed=0x2000U;
         CHECK(battletanx::try_fire_player_projectile(
-            projectile,tank,fire,drive_nav,angles));
-        CHECK(projectile.active && projectile.frames_remaining==120U);
+            projectile,tank,fire,drive_nav,angles,0));
+        CHECK(projectile.active && projectile.frames_remaining==112U);
+        CHECK(tank.primary_last_tick==0 && tank.primary_ammo==69);
         const float projectile_x=projectile.x;
         battletanx::update_player_projectile(projectile,drive_nav);
-        CHECK(projectile.active && projectile.x>projectile_x);
+        CHECK(projectile.active && projectile.x>projectile_x &&
+              projectile.frames_remaining==111U);
         CHECK(!battletanx::try_fire_player_projectile(
-            projectile,tank,fire,drive_nav,angles));
+            projectile,tank,fire,drive_nav,angles,31));
+        projectile.active=false;
+        CHECK(!battletanx::try_fire_player_projectile(
+            projectile,tank,fire,drive_nav,angles,30));
+        CHECK(battletanx::try_fire_player_projectile(
+            projectile,tank,fire,drive_nav,angles,31));
     }
 
     {
