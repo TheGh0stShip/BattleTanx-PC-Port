@@ -2,7 +2,9 @@
 
 This project is a native Linux and Windows source port of **BattleTanx** for
 Nintendo 64 (USA Rev 0). It is under active development and is not yet a
-playable game.
+complete recreation of every campaign system. The current build provides a
+playable native combat slice using the first campaign level's recovered world,
+unit placements, pickups, controller bindings, and save format.
 
 The port consumes game data from a legally obtained retail ROM supplied by the
 user. ROMs, extracted assets, generated files, and retail game data must never
@@ -37,8 +39,8 @@ ctest --test-dir build --output-on-failure
 ./build/BattleTanx.exe --window C:\Games\BattleTanx.z64
 ```
 
-The current executable proves the portable build and ROM-loading boundary. It
-validates the complete ROM, decompresses all 21 audited retail resource
+The current executable implements the portable build and ROM-loading boundary.
+It validates the complete ROM, decompresses all 21 audited retail resource
 bundles, and validates their offset tables before exposing entries to the
 native runtime. Each original loader's destination capacity remains enforced.
 It also decodes and validates all 22 recovered world streams and all 18
@@ -49,14 +51,16 @@ strict point containment, blocked-kind filtering, and the original octagonal
 nearest-cell search used during route initialization. Native straight-line
 route traversal follows the recovered corner-adjacency rules and reports
 target, boundary, blocked-cell, and retail 248-step limit outcomes.
-The portable core also contains deterministic recovered controller-state and
+The portable core contains deterministic recovered controller-state and
 planar-motion behavior covered by host tests. The default controller binding
 preset is decoded from the verified retail ROM and evaluated with the recovered
-analog/digital axis rules. The first native gameplay slice
-adds a player-tank state, navigation-constrained movement, and a bounded
-projectile pool. The current M1A1 drive slice uses its recovered retail
-turn, acceleration, grip, drag, and rotated footprint. Static collision uses
-the recovered level-object type filter and each object's rotated level shape.
+analog/digital axis rules. The native battle session owns generation-checked
+unit and projectile pools, player and computer control, target acquisition,
+cannon fire, ammunition, damage, destruction, scoring, pickups, match results,
+and respawning. The current M1A1 drive slice uses its recovered retail turn,
+acceleration, grip, drag, and rotated footprint. Tank and shell collision uses
+the recovered level-object type filter, each object's rotated level shape, and
+the decoded navigation boundaries.
 The current native presentation decodes and draws the retail world and tank
 meshes with their textures through a host-owned software z-buffer. The tank
 meshes and attached camera follow the decoded terrain height and surface normal.
@@ -78,18 +82,29 @@ selection drives texture scrolling and CI4 palette animation, including
 independent tank tread phases.
 No original display commands are executed at runtime.
 
-`--window` runs the native gameplay bring-up through the pinned SDL2 host
+`--window` runs the native gameplay runtime through the pinned SDL2 host
 library. It creates a native Linux or Windows window, maps keyboard and game
 controllers to the original controller representation, and presents a native
 pixel surface. It does not execute or translate N64 code. Its recovered
 tank-following camera renders decoded level-one retail placements and starts a
-player tank from the decoded retail group-zero spawn marker on open navigation
-data.
-Drive with the left stick or WASD and fire the current cannon shell with the
-left trigger or Left Shift. The default retail control preset keeps the turret
-aligned with the hull. Movement and projectile travel stop at navigation
-boundaries, blocked cells, and registered static world shapes. Escape or
-closing the window exits.
+player tank from the decoded retail group-zero spawn marker on the decoded
+navigation mesh. The same battle loads all three enemy tank placements and 51
+pickup placements from that level's retail entity-bank group. Enemies acquire and
+engage the player, cannon shells damage units and world obstacles, destroyed
+tanks affect the mission result, and the player can respawn from the recovered
+30 Hz match-state flow.
+
+Drive with the left stick or WASD and hold the left trigger or Left Shift to
+fire the cannon at its original repeat interval. Start or Enter pauses and
+resumes the match. The default retail control preset keeps the turret aligned
+with the hull. Movement and projectile travel stop at navigation boundaries,
+blocked cells, and registered static world shapes. Escape or closing the
+window exits.
+
+The current playable slice is not yet the complete campaign. Remaining work
+includes campaign menus and level transitions, recovered scripted enemy goals,
+the remaining weapons and effects, full pickup behavior, audio playback, and
+several uncommon render modes.
 
 Up to four hot-pluggable SDL game controllers are assigned to ports in
 connection order. The left stick supplies the N64 analog stick, the D-pad and
@@ -106,8 +121,9 @@ with common N64 tools, containing BattleTanx's original 256-byte game file.
 The game file's first big-endian word is the recovered retail checksum over
 bytes 4 through 255. Reads reject bad filesystem metadata, size, chains, or
 game checksums, and writes are read back and verified, matching the retail save
-path's integrity checks. Campaign/menu integration will populate the recovered
-record fields as those systems enter the port.
+path's integrity checks. The runtime parses the recovered campaign fields,
+preserves unknown bytes, applies saved unlimited-ammunition state, and writes
+the updated mission and score record after a successful battle.
 
 ## Architecture
 
