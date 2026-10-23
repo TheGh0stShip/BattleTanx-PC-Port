@@ -267,10 +267,10 @@ std::uint32_t alpha_blend(std::uint32_t source,std::uint32_t destination) noexce
 }
 
 bool retail_front_face(float signed_screen_area) noexcept {
-    // Retail model data is counter-clockwise in its right-handed, Y-up
-    // coordinate system.  Projection into our top-left-origin framebuffer
-    // flips Y, so those front faces have negative screen-space area.
-    return signed_screen_area<0.0F;
+    // The decoded row-vector model/view path and top-left framebuffer produce
+    // positive signed area for the retail exterior faces. This convention is
+    // pinned by the tank hull visual regression capture.
+    return signed_screen_area>0.0F;
 }
 
 std::size_t clipped_view_volume_vertex_count(
