@@ -3,6 +3,7 @@
 #include "battletanx/bundle.hpp"
 #include "battletanx/gameplay.hpp"
 #include "battletanx/geometry.hpp"
+#include "battletanx/host_input.hpp"
 #include "battletanx/lzari.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/resource.hpp"
@@ -112,6 +113,31 @@ int main() {
         motion.heading_degrees=360.0F;
         battletanx::advance_planar_motion(motion,0.0F);
         CHECK(motion.heading_degrees==360.0F);
+    }
+
+    {
+        battletanx::HostControllerState state{};
+        state.left_x=32767;
+        state.left_y=-32768;
+        state.right_x=-20000;
+        state.right_y=20000;
+        state.left_trigger=20000;
+        state.buttons[static_cast<std::size_t>(battletanx::HostButton::face_south)]=true;
+        state.buttons[static_cast<std::size_t>(battletanx::HostButton::start)]=true;
+        state.buttons[static_cast<std::size_t>(battletanx::HostButton::dpad_up)]=true;
+        state.buttons[static_cast<std::size_t>(battletanx::HostButton::right_shoulder)]=true;
+        const auto pad=battletanx::map_host_controller(state);
+        CHECK(pad.stick_x==127 && pad.stick_y==127);
+        CHECK(pad.buttons==0xB816U);
+
+        state={};
+        state.left_x=5999;
+        state.left_y=-5999;
+        state.right_x=16000;
+        state.right_y=-16000;
+        const auto deadzone=battletanx::map_host_controller(state);
+        CHECK(deadzone.stick_x==0 && deadzone.stick_y==0);
+        CHECK(deadzone.buttons==0U);
     }
 
     {

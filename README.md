@@ -22,6 +22,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ./build/BattleTanx /absolute/path/to/BattleTanx.z64
+./build/BattleTanx --window /absolute/path/to/BattleTanx.z64
 ```
 
 ## Windows build
@@ -33,6 +34,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ./build/BattleTanx.exe C:\Games\BattleTanx.z64
+./build/BattleTanx.exe --window C:\Games\BattleTanx.z64
 ```
 
 The current executable proves the portable build and ROM-loading boundary. It
@@ -46,6 +48,18 @@ The original interpolated 16-bit angle behavior reads its 257-sample sine
 table directly from the verified ROM rather than embedding retail data.
 Recovered rotated-bound geometry uses the same angle path and preserves the
 game's corner ordering for later collision and world-query integration.
+
+`--window` runs the native platform diagnostic through the pinned SDL2 host
+library. It creates a native Linux or Windows window, maps keyboard and game
+controllers to the original controller representation, and presents a native
+pixel surface. This diagnostic is not gameplay and does not execute or
+translate N64 code. Escape or closing the window exits.
+
+Up to four hot-pluggable SDL game controllers are assigned to ports in
+connection order. The left stick supplies the N64 analog stick, the D-pad and
+shoulders map directly, the left trigger supplies Z, Start supplies Start, and
+the right stick supplies the four C buttons. Keyboard controls remain available
+for port one: WASD, X/Z, Left Shift, Enter, Q/E, arrows, and I/J/K/L.
 
 ## Architecture
 
