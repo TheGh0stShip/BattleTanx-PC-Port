@@ -10,6 +10,7 @@
 #include "battletanx/resource.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/software_renderer.hpp"
+#include "battletanx/terrain.hpp"
 
 #include <algorithm>
 #include <array>
@@ -35,6 +36,10 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     constexpr std::uint32_t ticks_per_second=30U;
     const auto clock_start=std::chrono::steady_clock::now();
     auto tank=battletanx::spawn_player_tank(world,navigation);
+    const auto terrain=battletanx::TerrainSurface::build(world,assets,angles);
+    if (const auto height=terrain.height(tank.x,tank.z)) tank.y=*height;
+    std::cout << "Built native terrain surface: " << terrain.triangle_count()
+              << " triangles, player height " << tank.y << '\n';
     battletanx::PlayerProjectilePool projectiles{};
     std::uint64_t game_tick=0U;
     bool verified_native_frame=false;
@@ -48,6 +53,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             static_cast<std::uint64_t>(elapsed),ticks_per_second);
         while (game_tick<target_tick) {
             battletanx::update_player_tank(tank,input,world,navigation,angles);
+            if (const auto height=terrain.height(tank.x,tank.z)) tank.y=*height;
             battletanx::try_fire_player_projectile(
                 projectiles,tank,input,world,navigation,angles,
                 static_cast<std::int32_t>(game_tick));
@@ -75,9 +81,9 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         const auto turret=static_cast<std::uint16_t>(
             tank.turret_degrees*(65536.0F/360.0F));
         const auto body=battletanx::yaw_translation_matrix(
-            heading,tank.x,0.0F,tank.z,angles);
+            heading,tank.x,tank.y,tank.z,angles);
         const auto turret_transform=battletanx::yaw_translation_matrix(
-            turret,tank.x,0.0F,tank.z,angles);
+            turret,tank.x,tank.y,tank.z,angles);
         for (const std::uint32_t slot:{0x0BU,0x0CU,0x0EU}) {
             draw.items.push_back({assets.set_base()+slot,body,1U,0});
         }
@@ -86,7 +92,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             if (!projectile.active) continue;
             draw.items.push_back({assets.set_base()+0x24U,
                 battletanx::yaw_translation_matrix(
-                    turret,projectile.x,36.0F,projectile.z,angles),3U,0});
+                    turret,projectile.x,tank.y+36.0F,projectile.z,angles),3U,0});
         }
         renderer.render(draw,assets);
         if (!verified_native_frame) {

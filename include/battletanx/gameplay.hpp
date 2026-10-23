@@ -54,6 +54,7 @@ struct DriveInput {
 
 struct PlayerTank {
     float x{};
+    float y{};
     float z{};
     float velocity_x{};
     float velocity_z{};

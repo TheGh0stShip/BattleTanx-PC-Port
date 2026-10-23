@@ -25,6 +25,7 @@ add_library(battletanx_core
     src/sha256.cpp
     src/software_renderer.cpp
     src/texture.cpp
+    src/terrain.cpp
 )
 target_include_directories(battletanx_core PUBLIC include)
 # GCC 15.2 currently miscompiles the recovered interleaved corner transform

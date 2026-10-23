@@ -17,6 +17,7 @@
 #include "battletanx/sha256.hpp"
 #include "battletanx/software_renderer.hpp"
 #include "battletanx/texture.hpp"
+#include "battletanx/terrain.hpp"
 
 #include <array>
 #include <cmath>
@@ -64,6 +65,14 @@ int main() {
     CHECK(battletanx::select_model_lod(3U,1000000.0F)==0U);
     CHECK(battletanx::select_model_lod(3U,1000001.0F)==1U);
     CHECK(battletanx::select_model_lod(3U,2890001.0F)==2U);
+    {
+        const battletanx::TerrainTriangle triangle{{{{0.0F,10.0F,0.0F},
+                                                      {10.0F,20.0F,0.0F},
+                                                      {0.0F,30.0F,10.0F}}}};
+        const auto height=battletanx::terrain_triangle_height(triangle,2.5F,2.5F);
+        CHECK(height && std::abs(*height-17.5F)<0.00001F);
+        CHECK(!battletanx::terrain_triangle_height(triangle,20.0F,20.0F));
+    }
     {
         const auto projection=battletanx::perspective_matrix(
             37.0F,4.0F/3.0F,16.0F,5000.0F);
