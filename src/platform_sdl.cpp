@@ -34,16 +34,20 @@ std::runtime_error sdl_error(std::string_view operation) {
 
 class SdlPlatform final : public Platform {
   public:
-    explicit SdlPlatform(std::string_view title) {
+    SdlPlatform(std::string_view title,const PcSettings& settings)
+        : input_options_{settings.controller_deadzone,settings.controller_sensitivity},
+          rumble_strength_(settings.rumble_strength) {
         SDL_SetMainReady();
         if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_GAMECONTROLLER|SDL_INIT_HAPTIC)!=0) {
             const auto error=sdl_error("SDL initialization failed");
             SDL_Quit();
             throw error;
         }
+        Uint32 window_flags=SDL_WINDOW_SHOWN|SDL_WINDOW_RESIZABLE;
+        if (settings.window_mode==WindowMode::borderless) window_flags|=SDL_WINDOW_FULLSCREEN_DESKTOP;
         window_=SDL_CreateWindow(std::string(title).c_str(),SDL_WINDOWPOS_CENTERED,
-                                 SDL_WINDOWPOS_CENTERED,native_width,native_height,
-                                 SDL_WINDOW_SHOWN|SDL_WINDOW_RESIZABLE);
+                                 SDL_WINDOWPOS_CENTERED,settings.window_width,
+                                 settings.window_height,window_flags);
         if (window_==nullptr) {
             const auto error=sdl_error("window creation failed");
             SDL_Quit();
@@ -232,6 +236,14 @@ class SdlPlatform final : public Platform {
         SDL_UnlockAudioDevice(audio_device_);
     }
 
+    void rumble(std::size_t port,float strength,std::uint32_t milliseconds) override {
+        if (port>=controllers_.size() || controllers_[port]==nullptr ||
+            !SDL_GameControllerGetAttached(controllers_[port])) return;
+        strength=std::clamp(strength*rumble_strength_,0.0F,1.0F);
+        const auto magnitude=static_cast<std::uint16_t>(strength*65535.0F);
+        SDL_GameControllerRumble(controllers_[port],magnitude,magnitude,milliseconds);
+    }
+
     void open_controller(int device_index) {
         if (!SDL_IsGameController(device_index)) return;
         const SDL_JoystickID instance=SDL_JoystickGetDeviceInstanceID(device_index);
@@ -269,7 +281,7 @@ class SdlPlatform final : public Platform {
         }
     }
 
-    static ControllerPad read_controller(SDL_GameController* controller) {
+    ControllerPad read_controller(SDL_GameController* controller) const {
         HostControllerState state{};
         state.left_x=SDL_GameControllerGetAxis(controller,SDL_CONTROLLER_AXIS_LEFTX);
         state.left_y=SDL_GameControllerGetAxis(controller,SDL_CONTROLLER_AXIS_LEFTY);
@@ -291,7 +303,7 @@ class SdlPlatform final : public Platform {
         copy_button(HostButton::dpad_right,SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
         copy_button(HostButton::left_shoulder,SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
         copy_button(HostButton::right_shoulder,SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
-        return map_host_controller(state);
+        return map_host_controller(state,input_options_);
     }
 
     struct Voice {
@@ -370,19 +382,17 @@ class SdlPlatform final : public Platform {
     std::vector<Voice> voices_;
     std::array<LoopingVoice,2> looping_voices_{};
     std::array<SDL_GameController*,4> controllers_{};
+    HostInputOptions input_options_{};
+    float rumble_strength_{1.0F};
 };
 } // namespace
 
-std::unique_ptr<Platform> Platform::create(std::string_view title) {
-    return std::make_unique<SdlPlatform>(title);
+std::unique_ptr<Platform> Platform::create(std::string_view title,const PcSettings& settings) {
+    return std::make_unique<SdlPlatform>(title,settings);
 }
 
 std::filesystem::path Platform::controller_pak_path() {
-    char* base=SDL_GetPrefPath("TheGh0stShip","BattleTanx");
-    if (base==nullptr) throw sdl_error("user-data path lookup failed");
-    const std::filesystem::path result=std::filesystem::path(base)/"battletanx-pak1.mpk";
-    SDL_free(base);
-    return result;
+    return user_data_directory()/"battletanx-pak1.mpk";
 }
 
 } // namespace battletanx

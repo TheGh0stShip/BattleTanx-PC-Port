@@ -11,6 +11,7 @@
 #include "battletanx/lzari.hpp"
 #include "battletanx/material.hpp"
 #include "battletanx/model.hpp"
+#include "battletanx/pc_settings.hpp"
 #include "battletanx/level.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/resource.hpp"
@@ -27,6 +28,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -676,6 +678,16 @@ int main() {
         const auto extremes=battletanx::map_host_controller(state);
         CHECK(extremes.stick_x==-127 && extremes.stick_y==-127);
         CHECK(extremes.buttons==0x2000U);
+
+        state={};
+        state.left_x=10000;
+        const auto configured=battletanx::map_host_controller(
+            state,battletanx::HostInputOptions{0.5F,2.0F});
+        CHECK(configured.stick_x==0);
+        state.left_x=20000;
+        const auto sensitive=battletanx::map_host_controller(
+            state,battletanx::HostInputOptions{0.5F,2.0F});
+        CHECK(sensitive.stick_x==127);
     }
 
     {
@@ -760,6 +772,33 @@ int main() {
         CHECK(parsed.title == "BATTLETANX");
         CHECK(parsed.game_code == "NBXE");
         CHECK(parsed.revision == 0U);
+    }
+
+    {
+        battletanx::PcSettings settings;
+        settings.window_width=10;
+        settings.window_height=99999;
+        settings.master_volume=std::numeric_limits<float>::quiet_NaN();
+        settings.music_volume=-1.0F;
+        settings.effects_volume=2.0F;
+        settings.controller_deadzone=2.0F;
+        settings.controller_sensitivity=0.0F;
+        settings.rumble_strength=0.25F;
+        settings.last_rom_path="test.z64";
+        settings.validate();
+        CHECK(settings.window_width==640 && settings.window_height==4320);
+        CHECK(settings.master_volume==1.0F && settings.music_volume==0.0F &&
+              settings.effects_volume==1.0F);
+        CHECK(settings.controller_deadzone==0.95F && settings.controller_sensitivity==0.1F);
+        const auto path=std::filesystem::temp_directory_path()/"battletanx-pc-settings-test.ini";
+        std::error_code error;
+        std::filesystem::remove(path,error);
+        settings.save(path);
+        const auto loaded=battletanx::PcSettings::load(path);
+        CHECK(loaded.window_width==640 && loaded.window_height==4320);
+        CHECK(loaded.rumble_strength==0.25F && loaded.last_rom_path=="test.z64");
+        CHECK(battletanx::path_from_utf8("folder/test.z64").generic_string()=="folder/test.z64");
+        std::filesystem::remove(path,error);
     }
 
     return 0;

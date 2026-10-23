@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <stdexcept>
 #include <string_view>
 
@@ -14,7 +15,15 @@ constexpr std::size_t hud_rom_start=0x308290U;
 constexpr std::size_t hud_rom_end=0x30BFE0U;
 constexpr std::size_t gameplay_font_rom_start=0x2C3E50U;
 constexpr std::size_t gameplay_font_rom_end=0x2CB230U;
+constexpr std::size_t level_one_map_rom_start=0x7E6160U;
+constexpr std::size_t level_one_map_rom_end=0x7E6890U;
 constexpr int coordinate_scale=2;
+constexpr int level_map_width=60;
+constexpr int level_map_height=60;
+constexpr int level_map_left=0x19;
+constexpr int level_map_top=0xDB-level_map_height;
+constexpr float level_map_world_width=4375.0F;
+constexpr float level_map_world_depth=4375.0F;
 
 std::uint32_t be32(std::span<const std::uint8_t> bytes,std::size_t offset) {
     if (offset>bytes.size() || bytes.size()-offset<4U)
@@ -72,6 +81,50 @@ void sprite_region(std::span<std::uint32_t> pixels,int width,int height,
             rectangle(pixels,width,height,(x+static_cast<int>(sx))*coordinate_scale,
                       (y+static_cast<int>(sy))*coordinate_scale,
                       coordinate_scale,coordinate_scale,source);
+        }
+    }
+}
+
+void level_map_sprite(std::span<std::uint32_t> pixels,int width,int height,
+                      const RgbaImage& image) {
+    for (std::uint32_t sy=0U; sy<image.height; ++sy) {
+        for (std::uint32_t sx=0U; sx<image.width; ++sx) {
+            const std::uint32_t source=image.pixels[static_cast<std::size_t>(sy)*image.width+sx];
+            const std::uint32_t alpha=(source>>24U)*0xBEU/255U;
+            if (alpha==0U) continue;
+            const std::uint32_t color=alpha<<24U|(source&0xFFFFFFU);
+            rectangle(pixels,width,height,
+                      (level_map_left+static_cast<int>(sx))*coordinate_scale,
+                      (level_map_top+static_cast<int>(sy))*coordinate_scale,
+                      coordinate_scale,coordinate_scale,color);
+        }
+    }
+}
+
+constexpr std::array<std::uint32_t,4> marker_colors{
+    0xFF2828F0U,0xFF00CC00U,0xFFCC0000U,0xFFCCCC00U};
+
+void marker(std::span<std::uint32_t> pixels,int width,int height,
+            const HudMarker& unit) {
+    const auto position=level_one_hud_map_position(unit.x,unit.z);
+    const int center_x=(level_map_left+position.x)*coordinate_scale;
+    const int center_y=(level_map_top+position.y)*coordinate_scale;
+    const std::uint32_t color=marker_colors[unit.team%marker_colors.size()];
+    if (!unit.player) {
+        rectangle(pixels,width,height,center_x-2,center_y-2,4,4,color);
+        return;
+    }
+    const float radians=unit.heading_degrees*3.14159265358979323846F/180.0F;
+    const float forward_x=std::sin(radians);
+    const float forward_y=-std::cos(radians);
+    const float side_x=-forward_y;
+    const float side_y=forward_x;
+    for (int distance=-3; distance<=4; ++distance) {
+        const float half_width=distance<0 ? 2.5F : (4-distance)*0.75F;
+        for (int side=static_cast<int>(-half_width); side<=static_cast<int>(half_width); ++side) {
+            const int x=center_x+static_cast<int>(std::lround(forward_x*distance+side_x*side));
+            const int y=center_y+static_cast<int>(std::lround(forward_y*distance+side_y*side));
+            pixel(pixels,width,height,x,y,color);
         }
     }
 }
@@ -256,6 +309,13 @@ HudAssets load_hud_assets(const Rom& rom) {
     auto assets=decode_hud_assets(rom.bytes().subspan(hud_rom_start,hud_rom_end-hud_rom_start));
     assets.fonts=decode_retail_fonts(rom.bytes().subspan(
         gameplay_font_rom_start,gameplay_font_rom_end-gameplay_font_rom_start));
+    const auto map=rom.bytes().subspan(
+        level_one_map_rom_start,level_one_map_rom_end-level_one_map_rom_start);
+    constexpr std::size_t map_pixels=level_map_width*level_map_height/2U;
+    if (map.size()!=32U+map_pixels+8U)
+        throw std::runtime_error("level-one HUD map range is invalid");
+    assets.level_map=decode_ci4_texture(
+        map.subspan(32U,map_pixels),map.first(32U),level_map_width,level_map_height);
     return assets;
 }
 
@@ -264,6 +324,16 @@ std::size_t filled_health_segments(std::int32_t health,std::int32_t max_health) 
     const auto clamped=std::min(health,max_health);
     return std::min<std::size_t>(16U,static_cast<std::size_t>(
         static_cast<double>(clamped)/static_cast<double>(max_health)*16.0));
+}
+
+HudMapPosition level_one_hud_map_position(float x,float z) noexcept {
+    if (!std::isfinite(x) || !std::isfinite(z)) return {level_map_width/2,level_map_height/2};
+    const int map_x=level_map_width/2+static_cast<int>(
+        static_cast<float>(level_map_width/2)*x/level_map_world_width);
+    const int map_y=level_map_height/2+static_cast<int>(
+        static_cast<float>(level_map_height/2)*z/level_map_world_depth);
+    return {std::clamp(map_x,0,level_map_width-1),
+            std::clamp(map_y,0,level_map_height-1)};
 }
 
 void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
@@ -284,6 +354,10 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
                39*coordinate_scale,coordinate_scale,0xFFFFFFFFU);
     hud_number(pixels,width,height,assets,state.score,0x9C*coordinate_scale,
                0x1A*coordinate_scale,coordinate_scale,0xFFFFFFFFU);
+    if (assets.level_map) {
+        level_map_sprite(pixels,width,height,*assets.level_map);
+        for (const auto& unit:state.markers) marker(pixels,width,height,unit);
+    }
 
     std::string_view banner;
     std::array<char,2> countdown_text{};

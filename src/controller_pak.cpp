@@ -4,6 +4,7 @@
 #include <array>
 #include <fstream>
 #include <stdexcept>
+#include <system_error>
 
 namespace battletanx {
 namespace {
@@ -111,11 +112,24 @@ std::optional<std::size_t> find_entry(const std::array<std::uint8_t,image_size>&
 
 void write_image(const std::filesystem::path& path,
                  const std::array<std::uint8_t,image_size>& image) {
-    std::ofstream stream(path,std::ios::binary|std::ios::trunc);
+    if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path());
+    const auto temporary=std::filesystem::path{path.string()+".tmp"};
+    std::ofstream stream(temporary,std::ios::binary|std::ios::trunc);
     if (!stream) throw std::runtime_error("failed to create Controller Pak image");
     stream.write(reinterpret_cast<const char*>(image.data()),static_cast<std::streamsize>(image.size()));
     stream.close();
     if (!stream) throw std::runtime_error("failed to write Controller Pak image");
+    std::error_code error;
+    std::filesystem::rename(temporary,path,error);
+    if (error) {
+        std::filesystem::remove(path,error);
+        error.clear();
+        std::filesystem::rename(temporary,path,error);
+    }
+    if (error) {
+        std::filesystem::remove(temporary);
+        throw std::runtime_error("failed to replace Controller Pak image: "+error.message());
+    }
 }
 
 std::uint32_t stored_checksum(const ControllerPakRecord& record) noexcept {

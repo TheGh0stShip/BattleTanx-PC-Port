@@ -11,6 +11,7 @@
 #include "battletanx/level.hpp"
 #include "battletanx/level_spawns.hpp"
 #include "battletanx/model.hpp"
+#include "battletanx/pc_settings.hpp"
 #include "battletanx/platform.hpp"
 #include "battletanx/resource.hpp"
 #include "battletanx/rom.hpp"
@@ -57,10 +58,12 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::HudAssets& hud_assets,
                              const std::array<std::uint32_t,pickup_model_kind_count>& pickup_models,
                              battletanx::CampaignRecord campaign,
+                             const battletanx::PcSettings& settings,
                              const std::filesystem::path& pak_path) {
-    auto platform=battletanx::Platform::create("BattleTanx native source port");
+    auto platform=battletanx::Platform::create("BattleTanx native source port",settings);
     platform->set_sound_bank(sounds);
-    platform->set_music_track(music,static_cast<float>(campaign.music_volume)/7.0F);
+    platform->set_music_track(music,settings.master_volume*settings.music_volume*
+                                    static_cast<float>(campaign.music_volume)/7.0F);
     battletanx::SoftwareRenderer renderer(
         battletanx::native_width,battletanx::native_height);
     std::array<battletanx::ControllerPad,4> previous{};
@@ -131,27 +134,32 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         while (game_tick<target_tick) {
             session.step(session_input);
             for (const auto& event:session.gameplay_events()) {
-                if (event.kind!=battletanx::GameplayEventKind::mission_succeeded ||
-                    progress_saved) continue;
-                battletanx::CampaignWaveClear clear;
-                clear.mission_id=static_cast<std::uint8_t>(campaign.mission_id+1U);
-                clear.carry=session.owners()[0].score;
-                clear.unit_type=campaign.unit_type;
-                clear.bonus=campaign.bonus;
-                clear.control_scheme=campaign.control_scheme;
-                clear.difficulty=campaign.difficulty;
-                clear.powerups=campaign.powerups.raw;
-                clear.powerup_regen=campaign.powerup_regen.raw;
-                clear.base_defense=campaign.base_defense.raw;
-                clear.unlimited_ammo=campaign.unlimited_ammo.raw;
-                clear.sfx_volume=campaign.sfx_volume;
-                clear.music_volume=campaign.music_volume;
-                clear.bindings=campaign.bindings;
-                battletanx::apply_campaign_wave_clear(campaign,clear);
-                battletanx::write_controller_pak_record(
-                    pak_path,battletanx::serialize_campaign_record(campaign));
-                progress_saved=true;
-                std::cout << "Saved campaign progress to the Controller Pak\n";
+                if (event.kind==battletanx::GameplayEventKind::unit_damaged && event.owner==0U) {
+                    platform->rumble(0U,std::clamp(static_cast<float>(event.value)/40.0F,0.2F,1.0F),250U);
+                }
+                if (event.kind==battletanx::GameplayEventKind::unit_destroyed && event.owner==0U)
+                    platform->rumble(0U,1.0F,500U);
+                if (event.kind==battletanx::GameplayEventKind::mission_succeeded && !progress_saved) {
+                    battletanx::CampaignWaveClear clear;
+                    clear.mission_id=static_cast<std::uint8_t>(campaign.mission_id+1U);
+                    clear.carry=session.owners()[0].score;
+                    clear.unit_type=campaign.unit_type;
+                    clear.bonus=campaign.bonus;
+                    clear.control_scheme=campaign.control_scheme;
+                    clear.difficulty=campaign.difficulty;
+                    clear.powerups=campaign.powerups.raw;
+                    clear.powerup_regen=campaign.powerup_regen.raw;
+                    clear.base_defense=campaign.base_defense.raw;
+                    clear.unlimited_ammo=campaign.unlimited_ammo.raw;
+                    clear.sfx_volume=campaign.sfx_volume;
+                    clear.music_volume=campaign.music_volume;
+                    clear.bindings=campaign.bindings;
+                    battletanx::apply_campaign_wave_clear(campaign,clear);
+                    battletanx::write_controller_pak_record(
+                        pak_path,battletanx::serialize_campaign_record(campaign));
+                    progress_saved=true;
+                    std::cout << "Saved campaign progress to the Controller Pak\n";
+                }
             }
             const auto listener_id=session.owner_unit(0U);
             const auto* listener=listener_id ? session.units().get(*listener_id) : nullptr;
@@ -159,6 +167,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                 const float pan=listener!=nullptr && sound.positional ?
                     std::clamp((sound.x-listener->x)/2000.0F,-1.0F,1.0F) : 0.0F;
                 platform->play_sound(sound.sound_id,pan,
+                    settings.master_volume*settings.effects_volume*
                     static_cast<float>(campaign.sfx_volume)/7.0F);
             }
             session.clear_events();
@@ -174,6 +183,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             battletanx::sync_player_tank_from_unit(tank,*player);
             const auto vehicle_audio=battletanx::vehicle_sound_mix(
                 player->velocity_x,player->velocity_z,
+                settings.master_volume*settings.effects_volume*
                 static_cast<float>(campaign.sfx_volume)/7.0F);
             platform->set_looping_sound(0U,0x10U,0.0F,
                                         vehicle_audio.engine_gain,vehicle_audio.engine_pitch);
@@ -251,6 +261,12 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         hud.match_state=session.mission().state();
         hud.frames_remaining=session.mission().frames_remaining();
         hud.score=session.owners()[0].score;
+        session.units().for_each([&](battletanx::EntityId id,
+                                     const battletanx::UnitRecord& unit) {
+            if (!unit.alive) return;
+            hud.markers.push_back({unit.x,unit.z,unit.heading_degrees,unit.team,
+                                   active_player && id==*active_player});
+        });
         if (active_player) {
             const auto* player=session.units().get(*active_player);
             if (player!=nullptr) {
@@ -282,13 +298,33 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
 } // namespace
 
 int main(int argc, char** argv) {
-    const bool show_window=argc==3 && std::string_view(argv[1])=="--window";
-    if ((argc!=2 && !show_window) || (show_window && argc!=3)) {
-        std::cerr << "usage: BattleTanx [--window] /path/to/BattleTanx.z64\n";
-        return 2;
-    }
-
     try {
+        if (argc>0 && argv!=nullptr && argv[0]!=nullptr)
+            battletanx::configure_user_data_directory(argv[0]);
+        const auto data_path=battletanx::user_data_directory();
+        std::filesystem::create_directories(data_path);
+        const auto settings_path=data_path/"settings.ini";
+        auto settings=battletanx::PcSettings::load(settings_path);
+        if (!std::filesystem::exists(settings_path)) settings.save(settings_path);
+
+        bool show_window=true;
+        std::filesystem::path rom_path;
+        if (argc==1 && !settings.last_rom_path.empty()) {
+            rom_path=battletanx::path_from_utf8(settings.last_rom_path);
+        } else if (argc==2) {
+            rom_path=argv[1];
+        } else if (argc==3 && (std::string_view(argv[1])=="--window" ||
+                              std::string_view(argv[1])=="--validate")) {
+            show_window=std::string_view(argv[1])!="--validate";
+            rom_path=argv[2];
+        } else {
+            std::cerr << "usage: BattleTanx [--validate|--window] /path/to/BattleTanx.z64\n";
+            return 2;
+        }
+        if (rom_path.empty()) {
+            std::cerr << "usage: BattleTanx [--validate|--window] /path/to/BattleTanx.z64\n";
+            return 2;
+        }
         const auto pak_path=battletanx::Platform::controller_pak_path();
         auto pak=battletanx::load_controller_pak_record(pak_path);
         if (!pak) {
@@ -302,7 +338,9 @@ int main(int argc, char** argv) {
         if (!campaign) throw std::runtime_error("Controller Pak campaign record is invalid");
         std::cout << "Mounted verified Controller Pak image at "
                   << pak_path.string() << '\n';
-        const auto rom = battletanx::Rom::load_verified(argv[show_window?2:1]);
+        const auto rom=battletanx::Rom::load_verified(rom_path);
+        settings.remember_rom(rom_path);
+        settings.save(settings_path);
         std::cout << "Verified BattleTanx " << rom.header().game_code
                   << " Rev " << static_cast<unsigned>(rom.header().revision)
                   << " (" << rom.header().title << ")\n";
@@ -393,7 +431,7 @@ int main(int argc, char** argv) {
         if (show_window) {
             run_platform_diagnostic(
                 *preview_world,*preview_navigation,angles,bindings,preview_assets,
-                sounds,*music,hud_assets,pickup_models,*campaign,pak_path);
+                sounds,*music,hud_assets,pickup_models,*campaign,settings,pak_path);
         }
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';

@@ -18,14 +18,17 @@ constexpr std::uint16_t button_c_up=0x0008U;
 constexpr std::uint16_t button_c_down=0x0004U;
 constexpr std::uint16_t button_c_left=0x0002U;
 constexpr std::uint16_t button_c_right=0x0001U;
-constexpr int stick_deadzone=6000;
 constexpr int trigger_threshold=16000;
 constexpr int c_button_threshold=16000;
 
-std::int8_t scale_axis(int value) {
+std::int8_t scale_axis(int value,HostInputOptions options) {
     value=std::clamp(value,-32767,32767);
-    if (value>=-stick_deadzone && value<=stick_deadzone) return 0;
-    return static_cast<std::int8_t>(value*127/32767);
+    options.deadzone=std::clamp(options.deadzone,0.0F,0.95F);
+    options.sensitivity=std::clamp(options.sensitivity,0.1F,3.0F);
+    const int deadzone=static_cast<int>(options.deadzone*32767.0F);
+    if (value>=-deadzone && value<=deadzone) return 0;
+    const float scaled=static_cast<float>(value)*127.0F/32767.0F*options.sensitivity;
+    return static_cast<std::int8_t>(std::clamp(scaled,-127.0F,127.0F));
 }
 
 bool pressed(const HostControllerState& state,HostButton button) {
@@ -33,10 +36,10 @@ bool pressed(const HostControllerState& state,HostButton button) {
 }
 } // namespace
 
-ControllerPad map_host_controller(const HostControllerState& state) {
+ControllerPad map_host_controller(const HostControllerState& state,HostInputOptions options) {
     ControllerPad result{};
-    result.stick_x=scale_axis(state.left_x);
-    result.stick_y=scale_axis(-static_cast<int>(state.left_y));
+    result.stick_x=scale_axis(state.left_x,options);
+    result.stick_y=scale_axis(-static_cast<int>(state.left_y),options);
     if (pressed(state,HostButton::face_south)) result.buttons|=button_a;
     if (pressed(state,HostButton::face_west) || pressed(state,HostButton::face_east)) {
         result.buttons|=button_b;

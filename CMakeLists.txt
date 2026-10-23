@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(BattleTanxPC VERSION 0.1.0 LANGUAGES C CXX)
 
+option(BATTLETANX_PORTABLE "Keep settings and Controller Pak beside the executable" OFF)
+
 include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -22,6 +24,7 @@ add_library(battletanx_core
     src/material.cpp
     src/model.cpp
     src/music.cpp
+    src/pc_settings.cpp
     src/resource.cpp
     src/render_math.cpp
     src/rom.cpp
@@ -141,6 +144,13 @@ install(TARGETS BattleTanx
 install(FILES README.md COPYING
     DESTINATION .
     COMPONENT Runtime)
+if(WIN32)
+    install(FILES "Launch BattleTanx.cmd" DESTINATION . COMPONENT Runtime)
+endif()
+if(BATTLETANX_PORTABLE)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/portable.txt" "BattleTanx portable mode")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/portable.txt" DESTINATION . COMPONENT Runtime)
+endif()
 
 if(WIN32)
     set(CPACK_GENERATOR ZIP)
@@ -152,7 +162,11 @@ endif()
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
 set(CPACK_COMPONENTS_ALL Runtime)
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
+set(BATTLETANX_PACKAGE_SUFFIX "")
+if(BATTLETANX_PORTABLE)
+    set(BATTLETANX_PACKAGE_SUFFIX "-portable")
+endif()
 set(CPACK_PACKAGE_FILE_NAME
-    "BattleTanx-PC-${PROJECT_VERSION}-${BATTLETANX_PACKAGE_PLATFORM}")
+    "BattleTanx-PC-${PROJECT_VERSION}-${BATTLETANX_PACKAGE_PLATFORM}${BATTLETANX_PACKAGE_SUFFIX}")
 set(CPACK_PACKAGE_CHECKSUM SHA256)
 include(CPack)

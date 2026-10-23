@@ -5,6 +5,7 @@
 #include "battletanx/texture.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -30,7 +31,17 @@ struct RetailFont {
 struct HudAssets {
     std::vector<RgbaImage> images;
     std::vector<RetailFont> fonts;
+    std::optional<RgbaImage> level_map;
 };
+
+struct HudMarker {
+    float x{},z{};
+    float heading_degrees{};
+    std::uint8_t team{};
+    bool player{};
+};
+
+struct HudMapPosition { int x{},y{}; };
 
 struct HudState {
     std::int32_t health{};
@@ -39,6 +50,7 @@ struct HudState {
     std::int32_t score{};
     std::int32_t frames_remaining{};
     MatchState match_state{MatchState::live};
+    std::vector<HudMarker> markers;
 };
 
 [[nodiscard]] HudAssets decode_hud_assets(std::span<const std::uint8_t> pack);
@@ -47,6 +59,7 @@ struct HudState {
 [[nodiscard]] HudAssets load_hud_assets(const Rom& rom);
 [[nodiscard]] std::size_t filled_health_segments(
     std::int32_t health,std::int32_t max_health) noexcept;
+[[nodiscard]] HudMapPosition level_one_hud_map_position(float x,float z) noexcept;
 void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
                      const HudAssets& assets,const HudState& state);
 

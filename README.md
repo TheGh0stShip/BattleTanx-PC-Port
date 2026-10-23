@@ -24,7 +24,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ./build/BattleTanx /absolute/path/to/BattleTanx.z64
-./build/BattleTanx --window /absolute/path/to/BattleTanx.z64
+./build/BattleTanx --validate /absolute/path/to/BattleTanx.z64
 ```
 
 ## Windows build
@@ -36,7 +36,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ./build/BattleTanx.exe C:\Games\BattleTanx.z64
-./build/BattleTanx.exe --window C:\Games\BattleTanx.z64
+./build/BattleTanx.exe --validate C:\Games\BattleTanx.z64
 ```
 
 ## Install and portable packages
@@ -49,7 +49,7 @@ choice:
 
 ```sh
 cmake --install build --prefix ./BattleTanx-PC
-./BattleTanx-PC/BattleTanx --window /absolute/path/to/BattleTanx.z64
+./BattleTanx-PC/BattleTanx /absolute/path/to/BattleTanx.z64
 ```
 
 With a Visual Studio multi-configuration build on Windows, select the release
@@ -57,7 +57,7 @@ configuration explicitly:
 
 ```powershell
 cmake --install build --config Release --prefix .\BattleTanx-PC
-.\BattleTanx-PC\BattleTanx.exe --window C:\Games\BattleTanx.z64
+.\BattleTanx-PC\BattleTanx.exe C:\Games\BattleTanx.z64
 ```
 
 To create the same ROM-free archive produced by continuous integration, run:
@@ -66,12 +66,21 @@ To create the same ROM-free archive produced by continuous integration, run:
 cmake --build build --target package --parallel
 ```
 
+Configure with `-DBATTLETANX_PORTABLE=ON` to add the portable marker and a
+`-portable` package suffix.
+
 Linux packages are `.tar.gz` archives and Windows packages are `.zip`
 archives. Each contains the executable, README, and license text. A SHA-256
 sidecar is generated beside each archive. Extract the archive anywhere, then
 launch `BattleTanx` (`BattleTanx.exe` on Windows) with the ROM path. Official
 build artifacts are available from successful workflow runs; they
 intentionally contain neither a ROM nor extracted retail assets.
+
+The runtime remembers the last verified ROM, so subsequent launches need no
+argument. Place an empty `portable.txt` beside the executable to keep settings
+and the Controller Pak under a neighboring `userdata` directory. Otherwise it
+uses the standard per-user data directory. `BATTLETANX_DATA_DIR` provides an
+explicit override for scripted or shared installations.
 
 The current executable implements the portable build and ROM-loading boundary.
 It validates the complete ROM, decompresses all 21 audited retail resource
@@ -122,10 +131,10 @@ Gameplay fire, impact, destruction, pickup, and empty-ammunition events are
 routed to this bounded stereo mixer, with simple listener-relative panning for
 positional sounds. The first campaign track is rendered from its retail MIDI
 sequence and 29-sample instrument bank, looped through the same native mixer,
-and scaled by the original saved music-volume setting. Continuous vehicle
-sounds remain future work.
+and scaled by the original saved music-volume setting. The recovered looping
+engine and skid voices respond to vehicle speed and stop with the player unit.
 
-`--window` runs the native gameplay runtime through the pinned SDL2 host
+Normal launch runs the native gameplay runtime through the pinned SDL2 host
 library. It creates a native Linux or Windows window, maps keyboard and game
 controllers to the original controller representation, and presents a native
 pixel surface. It does not execute or translate N64 code. Its recovered
@@ -145,6 +154,11 @@ travel stop at navigation boundaries, blocked cells, and registered static
 world shapes. F11 or Alt+Enter toggles borderless fullscreen. Escape or
 closing the window exits.
 
+Host settings are stored in `settings.ini`. They cover window mode and size,
+master/music/effects gain, controller deadzone and sensitivity, rumble
+strength, and the remembered ROM path. Retail music/effects volume values in
+the original Controller Pak remain active and are multiplied by the host gains.
+
 The current playable slice is not yet the complete campaign. Remaining work
 includes campaign menus and level transitions, recovered scripted enemy goals,
 the remaining weapons and effects, full pickup behavior, the remaining music
@@ -162,7 +176,7 @@ I/J/K/L.
 ## Saves
 
 BattleTanx uses a Controller Pak rather than cartridge EEPROM. The native
-runtime mounts `battletanx-pak1.mpk` in the SDL per-user application-data
+runtime mounts `battletanx-pak1.mpk` in its per-user or portable data
 directory. It is a standard 32 KiB Controller Pak filesystem image, compatible
 with common N64 tools, containing BattleTanx's original 256-byte game file.
 The game file's first big-endian word is the recovered retail checksum over

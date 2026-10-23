@@ -2,6 +2,7 @@
 
 #include "battletanx/audio.hpp"
 #include "battletanx/gameplay.hpp"
+#include "battletanx/pc_settings.hpp"
 
 #include <array>
 #include <cstdint>
@@ -26,8 +27,9 @@ class Platform {
     virtual void set_looping_sound(std::size_t channel,std::uint16_t sound_id,
                                    float pan,float gain,float pitch)=0;
     virtual void stop_looping_sound(std::size_t channel)=0;
+    virtual void rumble(std::size_t port,float strength,std::uint32_t milliseconds)=0;
 
-    static std::unique_ptr<Platform> create(std::string_view title);
+    static std::unique_ptr<Platform> create(std::string_view title,const PcSettings& settings);
     static std::filesystem::path controller_pak_path();
 };
 

@@ -31,6 +31,12 @@ struct HostControllerState {
     std::array<bool,static_cast<std::size_t>(HostButton::count)> buttons{};
 };
 
-ControllerPad map_host_controller(const HostControllerState& state);
+struct HostInputOptions {
+    float deadzone{6000.0F/32767.0F};
+    float sensitivity{1.0F};
+};
+
+ControllerPad map_host_controller(const HostControllerState& state,
+                                  HostInputOptions options={});
 
 } // namespace battletanx

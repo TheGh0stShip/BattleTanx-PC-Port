@@ -67,6 +67,10 @@ int main() {
     CHECK(battletanx::filled_health_segments(1,100)==0U);
     CHECK(battletanx::filled_health_segments(0,100)==0U);
     CHECK(battletanx::filled_health_segments(100,0)==0U);
+    CHECK(battletanx::level_one_hud_map_position(0.0F,0.0F).x==30);
+    CHECK(battletanx::level_one_hud_map_position(0.0F,0.0F).y==30);
+    CHECK(battletanx::level_one_hud_map_position(4375.0F,4375.0F).x==59);
+    CHECK(battletanx::level_one_hud_map_position(-4375.0F,-4375.0F).x==0);
 
     auto fixture=hud_fixture();
     auto assets=battletanx::decode_hud_assets(fixture);
@@ -89,12 +93,17 @@ int main() {
     state.max_health=100;
     state.primary_ammo=70;
     state.score=1000;
+    assets.level_map=battletanx::RgbaImage{60U,60U,
+        std::vector<std::uint32_t>(60U*60U,0x80404040U)};
+    state.markers.push_back({0.0F,0.0F,0.0F,0U,true});
+    state.markers.push_back({100.0F,100.0F,0.0F,2U,false});
     battletanx::draw_player_hud(framebuffer,640,480,assets,state);
     CHECK(std::count(framebuffer.begin(),framebuffer.end(),0x00101820U)<
           static_cast<std::ptrdiff_t>(framebuffer.size()));
     const auto health_pixel=framebuffer[32U*640U+246U];
     const auto empty_pixel=framebuffer[32U*640U+326U];
     CHECK(health_pixel!=empty_pixel);
+    CHECK(framebuffer[318U*640U+50U]!=0x00101820U);
 
     state.match_state=battletanx::MatchState::paused;
     const auto before=framebuffer;
