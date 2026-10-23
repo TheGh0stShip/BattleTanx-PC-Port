@@ -2,8 +2,8 @@
 
 namespace battletanx {
 
-std::array<PlanarPoint,4> rotated_rect_corners(
-    const RotatedRect& rect,const AngleTable& angles) {
+void rotated_rect_corners(const RotatedRect& rect,const AngleTable& angles,
+                          std::array<PlanarPoint,4>& output) {
     const float sine=-angles.sine(rect.angle);
     const float cosine=angles.cosine(rect.angle);
     std::array<PlanarPoint,4> corners{};
@@ -19,11 +19,9 @@ std::array<PlanarPoint,4> rotated_rect_corners(
     for (std::size_t index=1U; index<corners.size(); ++index) {
         if (corners[index].z<corners[first].z) first=index;
     }
-    std::array<PlanarPoint,4> ordered{};
-    for (std::size_t index=0U; index<ordered.size(); ++index) {
-        ordered[index]=corners[(index+first)&3U];
+    for (std::size_t index=0U; index<output.size(); ++index) {
+        output[index]=corners[(index+first)&3U];
     }
-    return ordered;
 }
 
 } // namespace battletanx

@@ -53,7 +53,8 @@ int main() {
         CHECK(std::abs(angles.sine(0x14000U)-1.0F)<0.000001F);
 
         const battletanx::RotatedRect axis_aligned{20,10,-2,2,-1,1,0};
-        const auto corners=battletanx::rotated_rect_corners(axis_aligned,angles);
+        std::array<battletanx::PlanarPoint,4> corners{};
+        battletanx::rotated_rect_corners(axis_aligned,angles,corners);
         const auto near=[](float actual,float expected) {
             return std::abs(actual-expected)<0.000001F;
         };
@@ -76,7 +77,8 @@ int main() {
         CHECK(near(corners[3].x,9.0F) && near(corners[3].z,22.0F));
 
         const battletanx::RotatedRect quarter_turn{0,0,-2,2,-1,1,0x4000U};
-        const auto rotated=battletanx::rotated_rect_corners(quarter_turn,angles);
+        std::array<battletanx::PlanarPoint,4> rotated{};
+        battletanx::rotated_rect_corners(quarter_turn,angles,rotated);
         CHECK(std::abs(rotated[0].x-2.0F)<0.000001F);
         CHECK(std::abs(rotated[0].z+1.0F)<0.000001F);
         CHECK(std::abs(rotated[2].x+2.0F)<0.000001F);

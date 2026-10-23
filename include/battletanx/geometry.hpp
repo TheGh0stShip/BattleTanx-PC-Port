@@ -22,8 +22,8 @@ struct RotatedRect {
     std::uint16_t angle{};
 };
 
-std::array<PlanarPoint,4> rotated_rect_corners(
-    const RotatedRect& rect,const AngleTable& angles);
+void rotated_rect_corners(const RotatedRect& rect,const AngleTable& angles,
+                          std::array<PlanarPoint,4>& output);
 
 } // namespace battletanx
 
