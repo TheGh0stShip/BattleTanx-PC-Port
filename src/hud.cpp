@@ -60,6 +60,22 @@ void sprite(std::span<std::uint32_t> pixels,int width,int height,
     }
 }
 
+void sprite_region(std::span<std::uint32_t> pixels,int width,int height,
+                   const RgbaImage& image,int x,int y,std::uint32_t color,
+                   std::uint32_t region_width,std::uint32_t region_height) {
+    if (region_width>image.width || region_height>image.height)
+        throw std::invalid_argument("HUD sprite region is outside the image");
+    for (std::uint32_t sy=0U; sy<region_height; ++sy) {
+        for (std::uint32_t sx=0U; sx<region_width; ++sx) {
+            const auto source=tint(image.pixels[static_cast<std::size_t>(sy)*image.width+sx],color);
+            if ((source>>24U)==0U) continue;
+            rectangle(pixels,width,height,(x+static_cast<int>(sx))*coordinate_scale,
+                      (y+static_cast<int>(sy))*coordinate_scale,
+                      coordinate_scale,coordinate_scale,source);
+        }
+    }
+}
+
 using Glyph=std::array<std::uint8_t,7>;
 Glyph glyph(char c) noexcept {
     switch (c) {
@@ -260,10 +276,9 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
 
     const std::size_t filled=filled_health_segments(state.health,state.max_health);
     for (std::size_t segment=0U; segment<16U; ++segment)
-        rectangle(pixels,width,height,
-                  (0x7B+static_cast<int>(segment)*5)*coordinate_scale,
-                  0x10*coordinate_scale,5*coordinate_scale,8*coordinate_scale,
-                  segment<filled ? 0x80C83200U : 0x80202020U);
+        sprite_region(pixels,width,height,assets.images[7],
+                      0x7B+static_cast<int>(segment)*5,0x10,
+                      segment<filled ? 0xFFC83200U : 0xFF202020U,5U,8U);
     sprite(pixels,width,height,assets.images[18],270,8,0xFFFFFFFFU);
     hud_number(pixels,width,height,assets,state.primary_ammo,278*coordinate_scale,
                39*coordinate_scale,coordinate_scale,0xFFFFFFFFU);
