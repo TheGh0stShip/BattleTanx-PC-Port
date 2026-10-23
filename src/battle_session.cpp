@@ -170,6 +170,11 @@ BattleSession::BattleSession(SessionConfig config,const AngleTable& angles,UnitM
     config_.pickups.game_mode=static_cast<std::int32_t>(config_.mission.game_kind);
     pickups_.reserve(pickup_capacity);
     spawners_.reserve(spawner_capacity);
+    turrets_.reserve(turret_capacity);
+    for (TurretOwnerConfig& owner : turret_owner_config_) {
+        owner.effect_kind.fill(retail::shell_damage);
+        owner.fire_delay.fill(30);
+    }
     if (!motion_) throw std::invalid_argument("battle session requires a unit motion boundary");
 }
 
@@ -246,6 +251,24 @@ bool BattleSession::add_spawner(const SpawnerDefinition& definition) {
     return true;
 }
 
+void BattleSession::set_turret_owner_config(std::uint8_t owner,const TurretOwnerConfig& config) {
+    if (owner>=owner_capacity) throw std::out_of_range("turret owner index");
+    turret_owner_config_[owner]=config;
+}
+
+bool BattleSession::add_turret(const OwnedObjectPlacement& placement) {
+    if (turrets_.size()>=turret_capacity || placement.owner>=owner_capacity ||
+        placement.sub_kind>=turret_types || !owners_[placement.owner].present) return false;
+    std::array<TurretTarget,unit_capacity> targets{};
+    TurretContext context{angles_,targets,turret_owner_config_[placement.owner],0U,tick_,1.0F,
+                          turret_search_range,rng_,{}, {}};
+    auto turret=spawn_turret(placement.team,placement.owner,placement.sub_kind,placement.heading,
+                             placement.x,placement.z,false,placement.flagged,context);
+    if (!turret) return false;
+    turrets_.push_back(*turret);
+    return true;
+}
+
 void BattleSession::set_spawner_budget(std::uint8_t owner,std::int32_t budget) {
     if (owner>=owner_capacity) throw std::out_of_range("spawner owner index");
     spawner_budgets_[owner]=budget;
@@ -297,6 +320,48 @@ void BattleSession::update_spawners() {
         const auto spawned=spawn_unit(UnitSpawn{
             kind,request.owner,request.x,request.z,request.heading,0U,request.squad_slot});
         if (!spawned && spawner_budgets_[owner_index]>=0) ++spawner_budgets_[owner_index];
+    }
+}
+
+void BattleSession::update_turrets() {
+    std::array<TurretTarget,unit_capacity> targets{};
+    for (std::size_t slot=0U; slot<unit_capacity; ++slot) {
+        const UnitRecord* unit=units_.get(units_.slot_id(slot));
+        targets[slot]=TurretTarget{unit,unit!=nullptr && unit->alive,
+                                   unit!=nullptr && unit->control==UnitControl::computer};
+    }
+    CombatContext combat=combat_context();
+    WeaponBaseContext base{combat,world_,angles_};
+    WeaponContext weapons{base,weapon_state_,effects_,rng_};
+    for (TurretRecord& turret : turrets_) {
+        if (turret.removed || turret.owner>=owner_capacity) continue;
+        std::uint8_t count=0U;
+        for (const TurretRecord& other : turrets_) {
+            if (!other.removed && other.owner==turret.owner && count<4U) ++count;
+        }
+        const auto area_clear=[&](float x,float z,float half) {
+            bool clear=true;
+            units_.for_each([&](EntityId,const UnitRecord& unit) {
+                if (unit.alive && std::abs(unit.x-x)<=half && std::abs(unit.z-z)<=half) clear=false;
+            });
+            return clear;
+        };
+        const auto line_of_sight=[&](float x,float z,std::uint8_t target) {
+            if (target>=targets.size() || targets[target].unit==nullptr || !world_.segment) return true;
+            const UnitRecord& unit=*targets[target].unit;
+            return !world_.segment(x,z,unit.x,unit.z).has_value();
+        };
+        TurretContext context{angles_,targets,turret_owner_config_[turret.owner],count,tick_,1.0F,
+                              turret_search_range,rng_,area_clear,line_of_sight};
+        const TurretUpdateResult result=update_turret(turret,context);
+        if (!result.shot) continue;
+        (void)spawn_turret_projectile(weapons,*result.shot,turret.owner);
+        SoundEvent sound;
+        sound.sound_id=result.shot->sound;
+        sound.x=turret.x;
+        sound.z=turret.z;
+        sound.positional=true;
+        sounds_.push(sound);
     }
 }
 
@@ -489,6 +554,7 @@ void BattleSession::step(const SessionInput& input) {
         WeaponContext weapons{projectiles,weapon_state_,effects_,rng_};
         update_weapon_projectiles(weapons);
         update_units(input);
+        update_turrets();
         update_spawners();
         update_pickup_state();
     }
@@ -536,6 +602,13 @@ void BattleSession::serialize(StateWriter& writer) const {
         writer.boolean(pickup.removed);
     }
     weapon_state_.serialize(writer);
+    writer.u32(static_cast<std::uint32_t>(turrets_.size()));
+    for (const TurretRecord& turret : turrets_) turret.serialize(writer);
+    for (const TurretOwnerConfig& owner : turret_owner_config_) {
+        writer.f32(owner.rebuild_time);
+        for (const std::int16_t value : owner.effect_kind) writer.s16(value);
+        for (const std::int16_t value : owner.fire_delay) writer.s16(value);
+    }
     writer.u32(static_cast<std::uint32_t>(spawners_.size()));
     for (const SessionSpawner& runtime : spawners_) {
         const SpawnerState& state=runtime.state;

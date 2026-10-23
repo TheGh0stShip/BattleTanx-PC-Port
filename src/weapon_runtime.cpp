@@ -621,6 +621,30 @@ WeaponFireStatus fire_weapon(WeaponContext& context,EntityId unit_id,WeaponState
     return status;
 }
 
+std::optional<EntityId> spawn_turret_projectile(WeaponContext& context,const TurretShot& shot,
+                                                std::uint8_t owner) {
+    if (shot.projectile==3) return std::nullopt;
+    const auto id=context.state.projectiles.allocate();
+    if (!id) return std::nullopt;
+    WeaponProjectile& p=*context.state.projectiles.get(*id);
+    p.effect_kind=34U;
+    p.bullet_kind=static_cast<std::uint8_t>(std::clamp(shot.projectile,0,2));
+    p.trail=shot.projectile==0 ? 0x10U : 0U;
+    p.x=shot.x;
+    p.y=turret_muzzle_y;
+    p.z=shot.z;
+    p.velocity_x=shot.velocity_x;
+    p.velocity_z=shot.velocity_z;
+    p.speed=static_cast<float>(shot.speed);
+    p.heading=shot.heading;
+    p.life=0x70;
+    p.damage=static_cast<std::uint8_t>(std::clamp<std::int32_t>(shot.effect_kind,0,255));
+    p.attacker=owner;
+    p.ignore=no_entity;
+    p.range=probe_range(context,p.x,p.z,p.heading,no_entity);
+    return id;
+}
+
 std::size_t apply_splash_damage(WeaponContext& context,float x,float z,float radius,
                                 std::int32_t amount,std::uint8_t attacker,EntityId source) {
     CombatContext& combat=context.base.combat;

@@ -89,7 +89,7 @@ Outcome run(Battle& battle,std::int32_t max_frames,InputFor input_for) {
 }
 
 constexpr const char* expected_battle_checksum=
-    "9d000ceff2f9f7ccce3c6e67ce55f4ddbafe461c77858aa2a9247b07e104a415";
+    "1f56b17550e84eb1528fd43d49fb3501f182964bc07583c14728b9b6551ecfce";
 } // namespace
 
 RUNTIME_TEST(headless_battle_player_destroys_enemy_and_succeeds) {
@@ -198,6 +198,41 @@ RUNTIME_TEST(campaign_spawner_fills_first_free_squad_slot) {
         }
     });
     REQUIRE(found);
+    return true;
+}
+
+RUNTIME_TEST(campaign_owned_turret_tracks_and_fires_at_enemy_unit) {
+    BattleSession session(config_with_seed(0x7788U),angles(),open_ground_unit_motion(angles()));
+    session.add_owner(0U,OwnerSetup{0U,false,1U,0,false});
+    session.add_owner(1U,OwnerSetup{1U,true,1U,0,false});
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,0U,0.0F,600.0F,0U,0U});
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,1U,5000.0F,5000.0F,0U,0U});
+    TurretOwnerConfig config;
+    config.effect_kind.fill(17);
+    config.fire_delay.fill(0);
+    session.set_turret_owner_config(1U,config);
+    OwnedObjectPlacement placement;
+    placement.owner=1U;
+    placement.team=1U;
+    placement.sub_kind=1U;
+    placement.heading=0U;
+    REQUIRE(session.add_turret(placement));
+    session.mission().force_state(MatchState::live,0);
+    const auto projectile_count=[&]() {
+        std::size_t count=0U;
+        session.projectiles().for_each([&](EntityId,const WeaponProjectile&) { ++count; });
+        return count;
+    };
+    for (int frame=0; frame<24 && projectile_count()==0U; ++frame) {
+        session.step(SessionInput{});
+        session.clear_events();
+    }
+    REQUIRE(session.turrets().size()==1U);
+    REQUIRE(session.turrets()[0].fade==0U);
+    REQUIRE(projectile_count()==1U);
+    const WeaponProjectile* shot=session.projectiles().get(session.projectiles().slot_id(0U));
+    REQUIRE(shot!=nullptr && shot->attacker==1U && shot->damage==17U);
+    REQUIRE(shot->bullet_kind==0U && shot->trail==0x10U);
     return true;
 }
 

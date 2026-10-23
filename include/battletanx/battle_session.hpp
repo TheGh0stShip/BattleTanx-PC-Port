@@ -2,6 +2,7 @@
 
 #include "battletanx/combat.hpp"
 #include "battletanx/campaign_ai.hpp"
+#include "battletanx/campaign_spawn.hpp"
 #include "battletanx/deterministic_rng.hpp"
 #include "battletanx/enemy_control.hpp"
 #include "battletanx/level.hpp"
@@ -11,6 +12,7 @@
 #include "battletanx/objective_runtime.hpp"
 #include "battletanx/pickup_runtime.hpp"
 #include "battletanx/state_hash.hpp"
+#include "battletanx/unit_kinds.hpp"
 #include "battletanx/weapon_runtime.hpp"
 
 #include <array>
@@ -92,10 +94,14 @@ public:
     static constexpr std::size_t pickup_capacity=256U;
     bool add_pickup(const PickupRecord& pickup);
     bool add_spawner(const SpawnerDefinition& definition);
+    static constexpr std::size_t turret_capacity=128U;
+    bool add_turret(const OwnedObjectPlacement& placement);
+    void set_turret_owner_config(std::uint8_t owner,const TurretOwnerConfig& config);
     void set_spawner_budget(std::uint8_t owner,std::int32_t budget);
     void set_spawner_gate(std::uint8_t owner,bool open);
     void set_pickup_weights(const PickupWeights& weights) { pickup_weights_=weights; }
     [[nodiscard]] std::span<const PickupRecord> pickups() const noexcept { return pickups_; }
+    [[nodiscard]] std::span<const TurretRecord> turrets() const noexcept { return turrets_; }
     // Damage from a source outside the session's own shells (splash, contact).
     DamageResult apply_damage(EntityId unit,std::int32_t amount,std::uint8_t attacker,bool direct);
     ObjectiveEventStatus queen_taken(std::uint8_t holder_team,std::uint8_t collector_team);
@@ -152,6 +158,7 @@ private:
     void spawn_due_respawns();
     void update_pickup_state();
     void update_spawners();
+    void update_turrets();
     void initialize_objective();
     void update_objective();
 
@@ -172,6 +179,8 @@ private:
     };
     static constexpr std::size_t spawner_capacity=256U;
     std::vector<SessionSpawner> spawners_;
+    std::vector<TurretRecord> turrets_;
+    std::array<TurretOwnerConfig,owner_capacity> turret_owner_config_{};
     std::array<std::int32_t,owner_capacity> spawner_budgets_{};
     std::array<bool,owner_capacity> spawner_gates_{};
     std::optional<PickupWeights> pickup_weights_;

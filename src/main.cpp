@@ -159,6 +159,11 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             throw std::runtime_error("failed to register a planned campaign spawner");
         }
     }
+    for (const auto& placement:spawn_plan->owned_objects) {
+        if (!session.add_turret(placement)) {
+            throw std::runtime_error("failed to register a planned campaign turret");
+        }
+    }
     battletanx::PickupWeights pickup_weights;
     std::uint16_t pickup_slot=0U;
     for (const auto& placement:spawn_plan->pickups) {

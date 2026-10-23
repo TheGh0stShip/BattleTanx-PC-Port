@@ -4,6 +4,7 @@
 #include "battletanx/projectile_runtime.hpp"
 #include "battletanx/state_hash.hpp"
 #include "battletanx/weapon_catalog.hpp"
+#include "battletanx/unit_kinds.hpp"
 
 #include <array>
 #include <cstdint>
@@ -130,6 +131,9 @@ enum class WeaponFireStatus : std::uint8_t {
 // fire_unit_weapon (func_800987D8) driven by weapon_definition().
 WeaponFireStatus fire_weapon(WeaponContext& context,EntityId unit_id,WeaponState& weapon,
                              const FireRequest& request,const FireOptions& options={});
+
+std::optional<EntityId> spawn_turret_projectile(WeaponContext& context,const TurretShot& shot,
+                                                std::uint8_t owner);
 
 // Message 7 to every live unit within `radius` of (x, z): apply_unit_damage
 // with direct=false, then hit_shake += amount/4. Returns units messaged.
