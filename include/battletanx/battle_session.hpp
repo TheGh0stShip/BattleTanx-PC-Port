@@ -159,6 +159,7 @@ private:
     void update_pickup_state();
     void update_spawners();
     void update_turrets();
+    void attach_turret_collision(WeaponContext& context);
     void initialize_objective();
     void update_objective();
 

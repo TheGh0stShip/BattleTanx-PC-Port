@@ -70,6 +70,7 @@ struct WeaponProjectile {
     bool triggered{};               // blast: proximity trigger seen
     std::int32_t start_tick{};      // blast +0x1C (0 = not yet started)
     EntityId ignore{};
+    std::uint16_t external_ignore{0xFFFFU};
 };
 using WeaponProjectilePool=EntityPool<WeaponProjectile,weapon_projectile_capacity>;
 
@@ -116,6 +117,9 @@ struct WeaponContext {
     // Optional hit handler override (shielded objects, reflectors). Empty:
     // the unit hit handler (handle_projectile_hit) is used.
     std::function<ObjectResponse(EntityId victim,const ProjectileContact&)> object_response{};
+    struct ExternalHit { std::uint16_t token{}; float distance{}; };
+    std::function<std::optional<ExternalHit>(float,float,float,float,std::uint16_t)> external_hit{};
+    std::function<ObjectResponse(std::uint16_t,const ProjectileContact&)> external_response{};
 };
 
 struct FireOptions {
@@ -133,7 +137,7 @@ WeaponFireStatus fire_weapon(WeaponContext& context,EntityId unit_id,WeaponState
                              const FireRequest& request,const FireOptions& options={});
 
 std::optional<EntityId> spawn_turret_projectile(WeaponContext& context,const TurretShot& shot,
-                                                std::uint8_t owner);
+                                                std::uint8_t owner,std::uint16_t turret_token);
 
 // Message 7 to every live unit within `radius` of (x, z): apply_unit_damage
 // with direct=false, then hit_shake += amount/4. Returns units messaged.

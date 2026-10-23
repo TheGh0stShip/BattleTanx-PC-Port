@@ -89,7 +89,7 @@ Outcome run(Battle& battle,std::int32_t max_frames,InputFor input_for) {
 }
 
 constexpr const char* expected_battle_checksum=
-    "1f56b17550e84eb1528fd43d49fb3501f182964bc07583c14728b9b6551ecfce";
+    "9fb0d60c4b63316ac9cff3c68c93474fdbfcd7d8e236bff85e245783d0a1e73e";
 } // namespace
 
 RUNTIME_TEST(headless_battle_player_destroys_enemy_and_succeeds) {
@@ -233,6 +233,37 @@ RUNTIME_TEST(campaign_owned_turret_tracks_and_fires_at_enemy_unit) {
     const WeaponProjectile* shot=session.projectiles().get(session.projectiles().slot_id(0U));
     REQUIRE(shot!=nullptr && shot->attacker==1U && shot->damage==17U);
     REQUIRE(shot->bullet_kind==0U && shot->trail==0x10U);
+    return true;
+}
+
+RUNTIME_TEST(player_projectiles_destroy_owned_turret_and_award_score) {
+    BattleSession session(config_with_seed(0x3344U),angles(),open_ground_unit_motion(angles()));
+    session.add_owner(0U,OwnerSetup{0U,false,1U,0,false});
+    session.add_owner(1U,OwnerSetup{1U,true,1U,0,false});
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,0U,0.0F,0.0F,0U,0U});
+    (void)session.spawn_unit(UnitSpawn{retail::UnitKind::tank,1U,5000.0F,5000.0F,0U,0U});
+    TurretOwnerConfig turret_config;
+    turret_config.effect_kind.fill(0);
+    turret_config.fire_delay.fill(10000);
+    session.set_turret_owner_config(1U,turret_config);
+    OwnedObjectPlacement placement;
+    placement.owner=1U;
+    placement.team=1U;
+    placement.sub_kind=0U;
+    placement.z=500.0F;
+    REQUIRE(session.add_turret(placement));
+    session.mission().force_state(MatchState::live,0);
+    SessionInput fire;
+    fire.drive.fire=true;
+    fire.drive.fire_pressed=true;
+    for (int frame=0; frame<100 && session.turrets()[0].health>0; ++frame) {
+        session.step(fire);
+        fire.drive.fire_pressed=false;
+        session.clear_events();
+    }
+    REQUIRE(session.turrets()[0].health<=0);
+    REQUIRE((session.turrets()[0].flags&turret_destroyed)!=0U);
+    REQUIRE(session.owners()[0].score==turret_destroy_score[0]);
     return true;
 }
 

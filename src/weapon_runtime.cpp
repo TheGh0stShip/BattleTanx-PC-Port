@@ -3,6 +3,7 @@
 #include "battletanx/runtime_math.hpp"
 
 #include <cmath>
+#include <limits>
 #include <vector>
 
 namespace battletanx {
@@ -201,7 +202,9 @@ void consume_ammo(WeaponContext& context,UnitRecord& unit,WeaponState& weapon) {
 struct HitOutcome {
     bool hit{};
     bool unit{};
+    bool external{};
     EntityId target{};
+    std::uint16_t external_token{0xFFFFU};
     float x{}, z{};
 };
 
@@ -210,16 +213,30 @@ HitOutcome find_hit(WeaponContext& context,const WeaponProjectile& p,float end_x
     HitOutcome out;
     std::optional<UnitSegmentHit> unit_hit;
     std::optional<SegmentHit> world_hit;
+    std::optional<WeaponContext::ExternalHit> external_hit;
     if (units) {
         unit_hit=find_unit_segment_hit(context.base.combat.units,context.base.angles,p.x,p.z,end_x,end_z,p.ignore);
     }
     if (world) world_hit=world_segment(context.base.world,p.x,p.z,end_x,end_z);
-    if (unit_hit && (!world_hit || unit_hit->distance<=world_hit->distance)) {
+    if (units && context.external_hit) {
+        external_hit=context.external_hit(p.x,p.z,end_x,end_z,p.external_ignore);
+    }
+    const float external_distance=external_hit ? external_hit->distance : std::numeric_limits<float>::max();
+    const float world_distance=world_hit ? world_hit->distance : std::numeric_limits<float>::max();
+    if (unit_hit && unit_hit->distance<=world_distance && unit_hit->distance<=external_distance) {
         const float length=std::sqrt((end_x-p.x)*(end_x-p.x)+(end_z-p.z)*(end_z-p.z));
         const float t=length>0.0F ? unit_hit->distance/length : 0.0F;
         out.hit=true;
         out.unit=true;
         out.target=unit_hit->unit;
+        out.x=p.x+(end_x-p.x)*t;
+        out.z=p.z+(end_z-p.z)*t;
+    } else if (external_hit && external_hit->distance<=world_distance) {
+        const float length=std::sqrt((end_x-p.x)*(end_x-p.x)+(end_z-p.z)*(end_z-p.z));
+        const float t=length>0.0F ? external_hit->distance/length : 0.0F;
+        out.hit=true;
+        out.external=true;
+        out.external_token=external_hit->token;
         out.x=p.x+(end_x-p.x)*t;
         out.z=p.z+(end_z-p.z)*t;
     } else if (world_hit) {
@@ -249,6 +266,21 @@ ObjectResponse resolve_unit_hit(WeaponContext& context,EntityId projectile,const
         return context.object_response(hit.target,contact);
     }
     return ObjectResponse{handle_projectile_hit(combat,hit.target,p.damage,p.attacker,p.local,projectile),0U};
+}
+
+ObjectResponse resolve_external_hit(WeaponContext& context,EntityId projectile,
+                                    const WeaponProjectile& p,const HitOutcome& hit) {
+    GameplayEvent impact;
+    impact.kind=GameplayEventKind::projectile_impact;
+    impact.tick=context.base.combat.tick;
+    impact.subject=projectile;
+    impact.owner=p.attacker;
+    impact.value=p.weapon;
+    impact.x=hit.x; impact.y=p.y; impact.z=hit.z;
+    context.base.combat.events.push(impact);
+    if (!context.external_response) return {};
+    const ProjectileContact contact{projectile,hit.x,p.y,hit.z,p.heading,p.damage,p.attacker,p.local};
+    return context.external_response(hit.external_token,contact);
 }
 
 void impact_feedback(WeaponContext& context,EntityId id,const WeaponProjectile& p,const HitOutcome& hit) {
@@ -282,7 +314,7 @@ void impact_feedback(WeaponContext& context,EntityId id,const WeaponProjectile& 
 enum class Step : std::uint8_t { fly, impact, impact_silent, ricochet_done, ricochet_inplace };
 
 Step respond(WeaponContext& context,EntityId id,WeaponProjectile& p,const HitOutcome& hit) {
-    if (!hit.unit) {
+    if (!hit.unit && !hit.external) {
         if (p.bullet_kind!=1U || p.effect_kind==22U) {
             push_effect(context,EffectEventKind::impact_decal,id,no_entity,0U,p.attacker,hit.x,p.y,hit.z);
         }
@@ -298,7 +330,8 @@ Step respond(WeaponContext& context,EntityId id,WeaponProjectile& p,const HitOut
         context.base.combat.events.push(impact);
         return Step::impact;
     }
-    const ObjectResponse response=resolve_unit_hit(context,id,p,hit);
+    const ObjectResponse response=hit.external ? resolve_external_hit(context,id,p,hit) :
+                                                 resolve_unit_hit(context,id,p,hit);
     switch (response.result) {
     case HitResponse::pass_through: return Step::fly;
     case HitResponse::impact_silent: return Step::impact_silent;
@@ -446,6 +479,7 @@ void WeaponRuntimeState::serialize(StateWriter& writer) const {
         writer.boolean(p.triggered);
         writer.s32(p.start_tick);
         writer.id(p.ignore);
+        writer.u16(p.external_ignore);
     }
     for (std::size_t i=0U; i<unit_capacity; ++i) {
         writer.u8(hull_side[i]);
@@ -622,7 +656,7 @@ WeaponFireStatus fire_weapon(WeaponContext& context,EntityId unit_id,WeaponState
 }
 
 std::optional<EntityId> spawn_turret_projectile(WeaponContext& context,const TurretShot& shot,
-                                                std::uint8_t owner) {
+                                                std::uint8_t owner,std::uint16_t turret_token) {
     if (shot.projectile==3) return std::nullopt;
     const auto id=context.state.projectiles.allocate();
     if (!id) return std::nullopt;
@@ -641,6 +675,7 @@ std::optional<EntityId> spawn_turret_projectile(WeaponContext& context,const Tur
     p.damage=static_cast<std::uint8_t>(std::clamp<std::int32_t>(shot.effect_kind,0,255));
     p.attacker=owner;
     p.ignore=no_entity;
+    p.external_ignore=turret_token;
     p.range=probe_range(context,p.x,p.z,p.heading,no_entity);
     return id;
 }

@@ -333,7 +333,9 @@ void BattleSession::update_turrets() {
     CombatContext combat=combat_context();
     WeaponBaseContext base{combat,world_,angles_};
     WeaponContext weapons{base,weapon_state_,effects_,rng_};
-    for (TurretRecord& turret : turrets_) {
+    attach_turret_collision(weapons);
+    for (std::size_t turret_index=0U; turret_index<turrets_.size(); ++turret_index) {
+        TurretRecord& turret=turrets_[turret_index];
         if (turret.removed || turret.owner>=owner_capacity) continue;
         std::uint8_t count=0U;
         for (const TurretRecord& other : turrets_) {
@@ -355,7 +357,8 @@ void BattleSession::update_turrets() {
                               turret_search_range,rng_,area_clear,line_of_sight};
         const TurretUpdateResult result=update_turret(turret,context);
         if (!result.shot) continue;
-        (void)spawn_turret_projectile(weapons,*result.shot,turret.owner);
+        (void)spawn_turret_projectile(
+            weapons,*result.shot,turret.owner,static_cast<std::uint16_t>(turret_index));
         SoundEvent sound;
         sound.sound_id=result.shot->sound;
         sound.x=turret.x;
@@ -363,6 +366,35 @@ void BattleSession::update_turrets() {
         sound.positional=true;
         sounds_.push(sound);
     }
+}
+
+void BattleSession::attach_turret_collision(WeaponContext& context) {
+    context.external_hit=[this](float x0,float z0,float x1,float z1,std::uint16_t ignore) {
+        std::optional<WeaponContext::ExternalHit> nearest;
+        for (std::size_t index=0U; index<turrets_.size() && index<0xFFFFU; ++index) {
+            const TurretRecord& turret=turrets_[index];
+            if (index==ignore || turret.removed || turret.health<=0 || turret.type>=turret_types) continue;
+            const float half=turret_scale[turret.type]*turret_half_extent;
+            const retail::Footprint footprint{
+                static_cast<std::int16_t>(-half),static_cast<std::int16_t>(half),
+                static_cast<std::int16_t>(-half),static_cast<std::int16_t>(half)};
+            const auto distance=segment_footprint_distance(
+                x0,z0,x1,z1,turret.x,turret.z,angles_.sine(turret.heading),
+                angles_.cosine(turret.heading),footprint);
+            if (distance && (!nearest || *distance<nearest->distance)) {
+                nearest=WeaponContext::ExternalHit{static_cast<std::uint16_t>(index),*distance};
+            }
+        }
+        return nearest;
+    };
+    context.external_response=[this](std::uint16_t token,const ProjectileContact& contact) {
+        if (token>=turrets_.size()) return ObjectResponse{HitResponse::pass_through,0U};
+        TurretRecord& turret=turrets_[token];
+        const TurretDamageResult result=damage_turret(
+            turret,2U,contact.damage,contact.attacker,contact.angle,owners_,tick_,
+            static_cast<std::int32_t>(config_.mission.game_kind));
+        return ObjectResponse{result.handled ? HitResponse::impact : HitResponse::pass_through,0U};
+    };
 }
 
 void BattleSession::update_pickup_state() {
@@ -552,6 +584,7 @@ void BattleSession::step(const SessionInput& input) {
         CombatContext combat=combat_context();
         WeaponBaseContext projectiles{combat,world_,angles_};
         WeaponContext weapons{projectiles,weapon_state_,effects_,rng_};
+        attach_turret_collision(weapons);
         update_weapon_projectiles(weapons);
         update_units(input);
         update_turrets();
