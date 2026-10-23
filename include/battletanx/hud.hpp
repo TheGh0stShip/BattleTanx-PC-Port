@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace battletanx {
@@ -50,6 +51,9 @@ struct HudState {
     std::int32_t score{};
     std::int32_t frames_remaining{};
     MatchState match_state{MatchState::live};
+    const RgbaImage* briefing_image{};
+    std::string_view objective;
+    std::string_view result;
     std::vector<HudMarker> markers;
 };
 

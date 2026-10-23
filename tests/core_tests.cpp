@@ -3,6 +3,7 @@
 #include "battletanx/big_endian.hpp"
 #include "battletanx/bundle.hpp"
 #include "battletanx/camera.hpp"
+#include "battletanx/campaign_briefing.hpp"
 #include "battletanx/controller_pak.hpp"
 #include "battletanx/gameplay.hpp"
 #include "battletanx/fixed_tick.hpp"
@@ -216,6 +217,16 @@ int main() {
         const auto ci=battletanx::decode_ci4_texture(indices,palette,2U,2U);
         CHECK(ci.pixels[0]==0xFF000000U && ci.pixels[1]==0xFFFFFFFFU &&
               ci.pixels[2]==0xFFFFFFFFU && ci.pixels[3]==0xFF000000U);
+        std::array<std::uint8_t,512> palette256{};
+        palette256[2]=0xFFU;
+        palette256[3]=0xFFU;
+        constexpr std::array<std::uint8_t,4> indices8{0U,1U,1U,0U};
+        const auto ci8=battletanx::decode_ci8_texture(indices8,palette256,2U,2U);
+        CHECK(ci8.pixels[0]==0U && ci8.pixels[1]==0xFFFFFFFFU &&
+              ci8.pixels[2]==0xFFFFFFFFU && ci8.pixels[3]==0U);
+        CHECK(battletanx::campaign_objective_text(0U)=="DESTROY 5 TANKS");
+        CHECK(!battletanx::campaign_objective_text(4U));
+        CHECK(battletanx::campaign_result_text(16U)=="TRIUMPH!");
         constexpr std::array<std::uint8_t,1> intensities{0xF0U};
         const auto i4=battletanx::decode_i4_texture(intensities,2U,1U);
         CHECK(i4.pixels[0]==0xFFFFFFFFU && i4.pixels[1]==0xFF000000U);

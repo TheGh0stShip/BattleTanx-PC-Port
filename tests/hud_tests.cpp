@@ -112,7 +112,12 @@ int main() {
     CHECK(framebuffer!=before);
 
     state.match_state=battletanx::MatchState::title;
+    const battletanx::RgbaImage briefing{2U,2U,
+        std::vector<std::uint32_t>(4U,0xFFFFFFFFU)};
+    state.briefing_image=&briefing;
+    state.objective="A";
     battletanx::draw_player_hud(framebuffer,640,480,assets,state);
+    CHECK(framebuffer[36U*640U+318U]!=0x00101820U);
     state.match_state=battletanx::MatchState::countdown;
     state.frames_remaining=120;
     battletanx::draw_player_hud(framebuffer,640,480,assets,state);

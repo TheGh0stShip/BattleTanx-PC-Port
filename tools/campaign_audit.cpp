@@ -4,6 +4,7 @@
 //   campaign_audit <rom.z64>
 
 #include "battletanx/campaign_catalog.hpp"
+#include "battletanx/campaign_briefing.hpp"
 #include "battletanx/campaign_spawn.hpp"
 #include "battletanx/level.hpp"
 #include "battletanx/model.hpp"
@@ -18,6 +19,7 @@
 #include <iostream>
 #include <map>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -61,6 +63,14 @@ int main(int argc,char** argv) {
         const Rom rom=Rom::load_verified(argv[1]);
         const BigEndianView view=rom.view();
         int failures=0;
+        std::size_t briefing_images_decoded=0U;
+        for (std::size_t index=0U; index<campaign_briefing_image_count; ++index) {
+            const auto image=load_campaign_briefing_image(rom,index);
+            if (image.width!=campaign_briefing_images()[index].width ||
+                image.height!=campaign_briefing_images()[index].height)
+                throw std::runtime_error("campaign briefing image dimensions changed");
+            ++briefing_images_decoded;
+        }
 
         std::size_t word_mismatch=0U;
         const auto raw=campaign_wave_raw_words();
@@ -181,7 +191,9 @@ int main(int argc,char** argv) {
                   << "world_streams_decoded " << stream_ok << '/' << campaign_wave_count << '\n'
                   << "navigation_decoded " << nav_ok << '/' << campaign_wave_count << '\n'
                   << "spawn_plans_built " << spawn_ok << '/' << campaign_wave_count << '\n'
-                  << "runtime_model_sets " << model_ok << '/' << campaign_wave_count << '\n';
+                  << "runtime_model_sets " << model_ok << '/' << campaign_wave_count << '\n'
+                  << "briefing_images_decoded " << briefing_images_decoded << '/'
+                  << campaign_briefing_image_count << '\n';
         const CampaignCatalogAudit audit=audit_campaign_catalog();
         std::cout << "catalog_issues " << audit.issues.size() << '\n';
         if (word_mismatch || gun_mismatch || briefing_mismatch || !post_ok || !audit.ok()

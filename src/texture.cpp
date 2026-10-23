@@ -64,6 +64,22 @@ RgbaImage decode_ci4_texture(std::span<const std::uint8_t> source,
     return image;
 }
 
+RgbaImage decode_ci8_texture(std::span<const std::uint8_t> source,
+                             std::span<const std::uint8_t> palette,
+                             std::uint32_t width,std::uint32_t height) {
+    const std::size_t count=checked_pixel_count(width,height);
+    require_bytes(source,count);
+    require_bytes(palette,512U);
+    const BigEndianView palette_view(palette);
+    std::array<std::uint32_t,256> colors{};
+    for (std::size_t index=0U; index<colors.size(); ++index)
+        colors[index]=decode_rgba5551(palette_view.u16(index*2U));
+    RgbaImage image{width,height,std::vector<std::uint32_t>(count)};
+    for (std::size_t index=0U; index<count; ++index)
+        image.pixels[index]=colors[source[index]];
+    return image;
+}
+
 RgbaImage decode_rgba32_texture(std::span<const std::uint8_t> source,
                                 std::uint32_t width,std::uint32_t height) {
     const std::size_t count=checked_pixel_count(width,height);

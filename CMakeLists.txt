@@ -14,6 +14,7 @@ add_library(battletanx_core
     src/audio.cpp
     src/bundle.cpp
     src/camera.cpp
+    src/campaign_briefing.cpp
     src/controller_pak.cpp
     src/gameplay.cpp
     src/geometry.cpp

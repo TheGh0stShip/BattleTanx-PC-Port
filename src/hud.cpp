@@ -349,6 +349,20 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
     if (assets.images.size()!=retail_hud_image_count)
         throw std::invalid_argument("HUD asset set is incomplete");
 
+    if (state.match_state==MatchState::title && state.briefing_image!=nullptr) {
+        const auto& briefing=*state.briefing_image;
+        const int logical_width=width/coordinate_scale;
+        const int image_x=(logical_width-static_cast<int>(briefing.width))/2;
+        rectangle(pixels,width,height,0,0,width,height,0xE0000000U);
+        sprite(pixels,width,height,briefing,image_x,18,0xFFFFFFFFU);
+        if (!state.objective.empty() && !assets.fonts.empty()) {
+            constexpr int scale=2;
+            const int objective_width=retail_text_width(assets.fonts[0],state.objective,scale);
+            retail_text(pixels,width,height,assets.fonts[0],state.objective,
+                        (width-objective_width)/2,220,scale,0xFFFFFFFFU);
+        }
+    }
+
     const std::size_t filled=filled_health_segments(state.health,state.max_health);
     for (std::size_t segment=0U; segment<16U; ++segment)
         sprite_region(pixels,width,height,assets.images[7],
@@ -374,7 +388,8 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
         banner=std::string_view(countdown_text.data(),1U);
     } else if (state.match_state==MatchState::paused) banner="PAUSED";
     else if (state.match_state==MatchState::result_banner) {
-        banner=state.health>0 ? "SUCCESS" : "FAILED";
+        banner=state.health>0 && !state.result.empty() ? state.result :
+            state.health>0 ? "SUCCESS" : "FAILED";
         color=state.health>0 ? 0xE040FF40U : 0xE0FF4040U;
     }
     if (!banner.empty()) {
@@ -385,7 +400,8 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
         const int x=(width-text_width)/2;
         const int text_height=!assets.fonts.empty() ?
             static_cast<int>(assets.fonts[0].height)*scale : 7*scale;
-        const int y=(height-text_height)/2;
+        const int y=state.match_state==MatchState::title && state.briefing_image!=nullptr ?
+            height-text_height-32 : (height-text_height)/2;
         rectangle(pixels,width,height,x-12,y-10,text_width+24,text_height+20,0xA0000000U);
         if (!assets.fonts.empty())
             retail_text(pixels,width,height,assets.fonts[0],banner,x,y,scale,color);
