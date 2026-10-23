@@ -704,18 +704,18 @@ WaveRunResult run_platform_diagnostic(battletanx::Platform& platform,
         }
         session.projectiles().for_each(
             [&](battletanx::EntityId,const battletanx::WeaponProjectile& shell) {
-            // Effect 34's visible gun round uses slot 0x24. Retail cannon and
-            // spread rounds are primarily represented by their trail effects;
-            // keep the existing cannon fallback until those persistent effects
-            // are part of the native renderer. Effect 22 has its own confirmed
-            // rotating missile model at slot 0x41.
-            const std::optional<std::uint32_t> slot=shell.effect_kind==34U ?
-                std::optional<std::uint32_t>{0x24U} :
-                shell.effect_kind==22U ? std::optional<std::uint32_t>{0x41U} : std::nullopt;
-            if (!slot) return;
-            draw.items.push_back({assets.set_base()+*slot,
-                battletanx::yaw_translation_matrix(
-                    shell.heading,shell.x,shell.y,shell.z,angles),3U,0});
+            const auto visual=battletanx::projectile_visual(shell.effect_kind);
+            if (!visual) return;
+            auto transform=battletanx::yaw_translation_matrix(
+                shell.heading,shell.x,shell.y,shell.z,angles);
+            if (visual->scale!=1.0F) {
+                for (std::size_t row=0U; row<3U; ++row)
+                    for (std::size_t column=0U; column<3U; ++column)
+                        transform[row*4U+column]*=visual->scale;
+            }
+            const std::int8_t phase=shell.effect_kind==22U ?
+                static_cast<std::int8_t>((game_tick/8U)%2U) : std::int8_t{0};
+            draw.items.push_back({assets.set_base()+visual->model_slot,transform,3U,phase});
         });
         battletanx::effects::EffectRenderQueue effect_draws;
         bridge.effect_runtime().collect(effect_draws);

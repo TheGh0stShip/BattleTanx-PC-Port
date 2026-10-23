@@ -11,6 +11,23 @@
 #include <vector>
 
 namespace battletanx {
+
+std::optional<ProjectileVisual> projectile_visual(std::uint8_t effect_kind) noexcept {
+    switch (effect_kind) {
+    case 2U:  // func_8008D588 -> D_802D5A78
+    case 34U: // func_8008EBA0 -> D_802D5A78
+        return ProjectileVisual{0x24U,1.0F};
+    case 22U: // func_8008DDCC -> D_802D5AB2
+        return ProjectileVisual{0x41U,1.0F};
+    case 14U: // func_800F2D58 -> D_802D5A7A
+        return ProjectileVisual{0x25U,1.0F};
+    case 15U: // func_800F3770 -> D_802D5A7A, D_80074F0C = 0.35
+        return ProjectileVisual{0x25U,0.35F};
+    default:
+        return std::nullopt;
+    }
+}
+
 namespace {
 
 bool weapon_auto_fires(std::uint8_t kind) noexcept {

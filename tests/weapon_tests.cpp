@@ -290,6 +290,19 @@ RUNTIME_TEST(bullet_velocity_is_forward_times_speed) {
     return true;
 }
 
+RUNTIME_TEST(projectile_visuals_match_retail_draw_slots) {
+    REQUIRE((projectile_visual(2U)==ProjectileVisual{0x24U,1.0F}));
+    REQUIRE((projectile_visual(34U)==ProjectileVisual{0x24U,1.0F}));
+    REQUIRE((projectile_visual(22U)==ProjectileVisual{0x41U,1.0F}));
+    REQUIRE((projectile_visual(14U)==ProjectileVisual{0x25U,1.0F}));
+    const auto grenade=projectile_visual(15U);
+    REQUIRE(grenade.has_value());
+    REQUIRE(grenade->model_slot==0x25U);
+    REQUIRE(runtime_test::near(grenade->scale,0.35,1e-6));
+    REQUIRE(!projectile_visual(12U));
+    return true;
+}
+
 RUNTIME_TEST(powered_missile_bursts_fire_beams) {
     Arena a;
     const EntityId p=a.add(0U,0.0F,0.0F,UnitControl::player);

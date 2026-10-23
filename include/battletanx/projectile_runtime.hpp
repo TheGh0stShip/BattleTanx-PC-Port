@@ -133,6 +133,16 @@ struct EffectEvent {
 };
 using EffectEventQueue=EventQueue<EffectEvent>;
 
+// Retail draw callbacks resolve these effect kinds through D_802D5A30.
+// The scale is applied uniformly to the model axes.
+struct ProjectileVisual {
+    std::uint16_t model_slot{};
+    float scale{1.0F};
+    friend bool operator==(const ProjectileVisual&,const ProjectileVisual&)=default;
+};
+[[nodiscard]] std::optional<ProjectileVisual> projectile_visual(
+    std::uint8_t effect_kind) noexcept;
+
 struct ObjectResponse {
     HitResponse result{HitResponse::impact};
     std::uint16_t angle{};
