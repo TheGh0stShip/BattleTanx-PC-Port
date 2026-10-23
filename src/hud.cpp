@@ -431,6 +431,13 @@ void draw_player_hud(std::span<std::uint32_t> pixels,int width,int height,
         if (!assets.fonts.empty())
             retail_text(pixels,width,height,assets.fonts[0],banner,x,y,scale,color);
         else text(pixels,width,height,banner,x,y,scale,color);
+        if (!state.result_prompt.empty() && !assets.fonts.empty()) {
+            constexpr int prompt_scale=2;
+            const int prompt_width=retail_text_width(
+                assets.fonts[0],state.result_prompt,prompt_scale);
+            retail_text(pixels,width,height,assets.fonts[0],state.result_prompt,
+                        (width-prompt_width)/2,y+text_height+24,prompt_scale,0xFFFFFFFFU);
+        }
     }
 }
 

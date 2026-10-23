@@ -122,6 +122,17 @@ int main() {
     state.frames_remaining=120;
     battletanx::draw_player_hud(framebuffer,640,480,assets,state);
 
+    state.match_state=battletanx::MatchState::result_banner;
+    state.health=1;
+    state.result="A";
+    state.result_prompt={};
+    std::fill(framebuffer.begin(),framebuffer.end(),0x00101820U);
+    battletanx::draw_player_hud(framebuffer,640,480,assets,state);
+    const auto result_without_prompt=framebuffer;
+    state.result_prompt="A";
+    battletanx::draw_player_hud(framebuffer,640,480,assets,state);
+    CHECK(framebuffer!=result_without_prompt);
+
     bool rejected=false;
     try {
         fixture[3U]=22U;

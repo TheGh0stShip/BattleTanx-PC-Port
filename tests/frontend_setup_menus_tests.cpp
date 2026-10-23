@@ -18,9 +18,9 @@ GangSelectResult gang_press(GangSelectState& state,std::uint32_t bits) {
 
 RUNTIME_TEST(binding_rows_skip_non_row_words) {
     const BindingWords& words=preset_bindings[2];
-    REQUIRE(binding_word_for_row(words,2,0)==std::optional<std::uint8_t>{0U});
-    REQUIRE(binding_word_for_row(words,2,3)==std::optional<std::uint8_t>{4U}); // word 3 is >= threshold
-    REQUIRE(binding_word_for_row(words,2,8)==std::optional<std::uint8_t>{11U});
+    REQUIRE(binding_word_for_row(words,2,0)==std::optional<std::uint8_t>{std::uint8_t{0U}});
+    REQUIRE(binding_word_for_row(words,2,3)==std::optional<std::uint8_t>{std::uint8_t{4U}}); // word 3 is >= threshold
+    REQUIRE(binding_word_for_row(words,2,8)==std::optional<std::uint8_t>{std::uint8_t{11U}});
     REQUIRE(!binding_word_for_row(words,2,9).has_value());
     REQUIRE(!binding_word_for_row(preset_bindings[0],0,8).has_value()); // preset 0 has 8 rows
     REQUIRE(!binding_word_for_row(words,7,0).has_value());

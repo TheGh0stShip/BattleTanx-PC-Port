@@ -129,7 +129,9 @@ RUNTIME_TEST(announce_adds_progress_and_event) {
 }
 
 RUNTIME_TEST(unknown_kinds_are_reported) {
-    for (const std::uint8_t kind : {6U,17U,20U,21U,22U,40U,255U}) {
+    for (const std::uint8_t kind : {std::uint8_t{6U},std::uint8_t{17U},std::uint8_t{20U},
+                                    std::uint8_t{21U},std::uint8_t{22U},std::uint8_t{40U},
+                                    std::uint8_t{255U}}) {
         Setup s;
         const UnitRecord before=s.unit;
         const PickupEffectResult r=s.apply(kind);

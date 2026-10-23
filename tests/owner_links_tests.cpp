@@ -196,7 +196,7 @@ RUNTIME_TEST(tracker_is_deterministic) {
         input.units[1]=ready_unit(0U,50.0F,30.0F);
         input.units[5]=ready_unit(1U,700.0F,-40.0F);
         input.units[6]=ready_unit(1U,900.0F,10.0F);
-        input.units[6].tracked_kind1b_owner=6U;
+        input.units[6].tracked_kind1b_owner=std::uint8_t{6U};
         for (std::int32_t tick=0; tick<12; ++tick) {
             input.tick=tick;
             input.units[5].x-=25.0F;
