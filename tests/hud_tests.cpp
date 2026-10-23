@@ -31,7 +31,8 @@ std::vector<std::uint8_t> hud_fixture() {
         bytes[start+2U]=0xFFU;
         bytes[start+3U]=0xFFU; // palette entry 1: opaque white
         std::fill(bytes.begin()+static_cast<std::ptrdiff_t>(start+0x20U),
-                  bytes.begin()+static_cast<std::ptrdiff_t>(start+image_size),0x11U);
+                  bytes.begin()+static_cast<std::ptrdiff_t>(start+image_size),
+                  std::uint8_t{0x11U});
     }
     return bytes;
 }
