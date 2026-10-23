@@ -411,6 +411,11 @@ int main() {
               camera.target.z==4227.0F);
         CHECK(camera.vertical_fov_degrees==37.0F && camera.near_plane==16.0F &&
               camera.far_plane==5000.0F);
+        const auto tilted_camera=battletanx::build_tank_camera(
+            camera_tank,angles,{0.0F,1.0F,1.0F});
+        CHECK(std::abs(tilted_camera.up.x)<0.00001F);
+        CHECK(std::abs(tilted_camera.up.y-0.7071067F)<0.0001F);
+        CHECK(std::abs(tilted_camera.up.z-0.7071067F)<0.0001F);
 
         const battletanx::RotatedRect axis_aligned{20,10,-2,2,-1,1,0};
         std::array<battletanx::PlanarPoint,4> corners{};

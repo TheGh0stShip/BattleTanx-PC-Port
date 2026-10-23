@@ -58,10 +58,10 @@ projectile pool. The current M1A1 drive slice uses its recovered retail
 turn, acceleration, grip, drag, and rotated footprint. Static collision uses
 the recovered level-object type filter and each object's rotated level shape.
 The current native presentation decodes and draws the retail world and tank
-meshes with their textures through a host-owned software z-buffer. Tank meshes
-follow the decoded terrain height and surface normal. Several uncommon
-material modes remain bring-up work rather than a claim of complete retail
-rendering fidelity.
+meshes with their textures through a host-owned software z-buffer. The tank
+meshes and attached camera follow the decoded terrain height and surface normal.
+Several uncommon material modes remain bring-up work rather than a claim of
+complete retail rendering fidelity.
 The original interpolated 16-bit angle behavior reads its 257-sample sine
 table directly from the verified ROM rather than embedding retail data.
 Recovered rotated-bound geometry uses the same angle path and preserves the
