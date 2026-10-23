@@ -131,10 +131,48 @@ UnitMotion open_ground_unit_motion(const AngleTable& angles) {
         MotionData{WorldLevel{},open_ground_navigation(),angles}));
 }
 
+RoutePlanner level_route_planner(const NavigationLevel& navigation) {
+    auto data=std::make_shared<const NavigationLevel>(navigation);
+    return [data](const RouteRequest& request) {
+        RouteResponse response;
+        response.unit=request.unit;
+        response.serial=request.serial;
+        const NavigationVertex start_point{request.from_x,request.from_z};
+        const NavigationVertex goal_point{request.to_x,request.to_z};
+        const std::uint16_t start_triangle=find_nearest_navigation_triangle(*data,start_point);
+        const std::uint16_t goal_triangle=find_nearest_navigation_triangle(*data,goal_point);
+        if (start_triangle==0U || goal_triangle==0U) return response;
+        const NavigationRoute route=plan_navigation_route(
+            *data,RouteEndpoint{start_point,start_triangle},RouteEndpoint{goal_point,goal_triangle},
+            retail_route_blocked_mask(*data,start_triangle,goal_triangle));
+        if (route.stop!=NavigationRouteStop::reached) return response;
+        response.reachable=true;
+        NavigationVertex previous=start_point;
+        float distance=0.0F;
+        for (std::size_t i=0U; i<route.count; ++i) {
+            if (route.corners[i]==0U) continue;
+            distance+=navigation_route_distance(previous,route.waypoints[i]);
+            previous=route.waypoints[i];
+        }
+        distance+=navigation_route_distance(previous,goal_point);
+        response.nav_distance=distance;
+        response.nav_state=route.count<=1U ? std::uint8_t{1U} : std::uint8_t{0U};
+        if (route.count>0U && route.corners[0]!=0U) {
+            response.waypoint_x=route.waypoints[0].x;
+            response.waypoint_z=route.waypoints[0].z;
+        } else {
+            response.waypoint_x=goal_point.x;
+            response.waypoint_z=goal_point.z;
+        }
+        return response;
+    };
+}
+
 BattleSession::BattleSession(SessionConfig config,const AngleTable& angles,UnitMotion motion,
-                             WorldCollision world)
+                             WorldCollision world,RoutePlanner routes)
     : config_(config),angles_(angles),motion_(std::move(motion)),world_(std::move(world)),
-      mission_(config.mission),enemy_(config.enemy),rng_(config.rng_seed) {
+      route_planner_(std::move(routes)),mission_(config.mission),
+      campaign_ai_(config.campaign_ai),rng_(config.rng_seed) {
     config_.mission.external_objective=true;
     mission_=MissionState(config_.mission);
     config_.combat.game_mode=config_.mission.game_kind;
@@ -157,6 +195,7 @@ void BattleSession::add_owner(std::uint8_t index,const OwnerSetup& setup) {
     owner.armor_scale=setup.armor_scale;
     owner.damage_scale=setup.damage_scale;
     objective_bases_[index]=setup.objective_base;
+    if (setup.difficulty) campaign_ai_.set_owner_difficulty(index,*setup.difficulty);
 }
 
 std::optional<EntityId> BattleSession::spawn_unit(const UnitSpawn& spawn) {
@@ -257,8 +296,18 @@ void BattleSession::release_destroyed_units() {
 }
 
 void BattleSession::update_units(const SessionInput& input) {
-    std::array<EnemyCommand,unit_capacity> commands{};
-    const std::size_t command_count=enemy_.update(units_,angles_,rng_,tick_,commands);
+    std::array<CampaignAiCommand,unit_capacity> campaign_commands{};
+    std::array<RouteRequest,unit_capacity> route_requests{};
+    CampaignAiFrame frame;
+    frame.tick=tick_;
+    frame.route_budget=true;
+    const CampaignAiOutput ai_output=campaign_ai_.update(
+        units_,owners_,angles_,rng_,frame,campaign_commands,route_requests);
+    if (route_planner_) {
+        for (std::size_t i=0U; i<ai_output.routes; ++i) {
+            (void)campaign_ai_.apply_route_response(route_planner_(route_requests[i]));
+        }
+    }
 
     CombatContext combat=combat_context();
     ProjectileContext projectiles{combat,shells_,world_,angles_};
@@ -270,13 +319,19 @@ void BattleSession::update_units(const SessionInput& input) {
         if (unit->control==UnitControl::player && unit->owner==0U) {
             drive=input.drive;
         } else if (unit->control==UnitControl::computer) {
-            for (std::size_t i=0U; i<command_count; ++i) {
-                if (commands[i].unit==id) {
-                    drive=commands[i].input;
-                    unit->target=commands[i].target;
+            for (std::size_t i=0U; i<ai_output.commands; ++i) {
+                if (campaign_commands[i].command.unit==id) {
+                    drive=campaign_commands[i].command.input;
+                    unit->target=campaign_commands[i].command.target;
+                    if (campaign_commands[i].self_destruct) {
+                        unit->flags|=retail::flag_instant_death;
+                        (void)apply_unit_damage(combat,id,1U,unit->owner,false);
+                        (void)self_destruct(unit->owner);
+                    }
                 }
             }
         }
+        if (!unit->alive) continue;
         motion_(*unit,drive);
         if (drive.fire) {
             fire_unit_weapon(projectiles,id,unit->primary_weapon,
@@ -378,8 +433,8 @@ void BattleSession::serialize(StateWriter& writer) const {
         writer.boolean(units_.slot_occupied(slot));
         writer.u16(units_.slot_generation(slot));
         if (const UnitRecord* unit=units_.get(units_.slot_id(slot))) write_unit(writer,*unit);
-        writer.id(enemy_.target_of(slot));
     }
+    campaign_ai_.serialize(writer);
     writer.u32(static_cast<std::uint32_t>(pickups_.size()));
     for (const PickupRecord& pickup : pickups_) {
         writer.id(pickup.id);

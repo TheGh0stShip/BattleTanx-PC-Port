@@ -111,7 +111,8 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     session_config.combat.unlimited_ammo=campaign.unlimited_ammo.enabled();
     battletanx::BattleSession session(
         session_config,angles,battletanx::level_unit_motion(world,navigation,angles),
-        battletanx::level_world_collision(world,navigation,angles));
+        battletanx::level_world_collision(world,navigation,angles),
+        battletanx::level_route_planner(navigation));
     for (std::size_t owner=0U; owner<battletanx::spawn_owner_count; ++owner) {
         if (!spawn_plan->owners[owner].present) continue;
         const auto count=static_cast<std::uint8_t>(std::count_if(
@@ -119,11 +120,23 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             [owner](const battletanx::PlannedUnit& unit) { return unit.owner==owner; }));
         const float scale=spawn_plan->owners[owner].human_scale.value_or(
             battletanx::retail::human_scale_default);
+        const auto group=std::min<std::size_t>(static_cast<std::size_t>(campaign.difficulty),
+                                               battletanx::campaign_skill_groups-1U);
+        const auto& skill=wave.owners[owner].skills[group];
+        battletanx::AiProfile profile;
+        profile.skill_a=skill.aggressiveness;
+        profile.skill_b=skill.intelligence;
+        profile.speed=skill.tint[0];
+        profile.rate_primary=skill.tint[1];
+        profile.rate_class4=skill.tint[2];
+        profile.rate_kind2=skill.tint[3];
+        profile.value_32c=skill.tint[4];
         session.add_owner(static_cast<std::uint8_t>(owner),battletanx::OwnerSetup{
             spawn_plan->owners[owner].team,spawn_input.owners[owner].computer,
             std::max<std::uint8_t>(count,1U),
             static_cast<std::int16_t>(std::max(spawn_plan->owners[owner].reserve,0)),false,
-            scale,scale,wave.game_kind==3 || wave.game_kind==6});
+            scale,scale,wave.game_kind==3 || wave.game_kind==6,
+            battletanx::owner_difficulty_from_profile(profile)});
         if (!spawn_plan->respawn_points[owner].points.empty()) {
             const auto& point=spawn_plan->respawn_points[owner].points.front();
             session.set_respawn_point(static_cast<std::uint8_t>(owner),

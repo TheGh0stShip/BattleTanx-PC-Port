@@ -33,6 +33,10 @@ struct Battle {
         session.add_owner(1U,OwnerSetup{1U,true,5U,0,false});
         player=*session.spawn_unit(UnitSpawn{retail::UnitKind::tank,0U,0.0F,0.0F,0U,0U});
         enemy=*session.spawn_unit(UnitSpawn{retail::UnitKind::tank,1U,0.0F,enemy_distance,0x8000U,0U});
+        // Keep the deterministic success fixture alive through one shell that
+        // was already in flight when the enemy was destroyed. Result-delay
+        // damage remains enabled and is covered by the objective tests.
+        session.units().get(player)->shield_strength=20;
     }
 };
 
@@ -85,7 +89,7 @@ Outcome run(Battle& battle,std::int32_t max_frames,InputFor input_for) {
 }
 
 constexpr const char* expected_battle_checksum=
-    "0077e5464fce8766354a837cea19ac3aef16fab07b2d3ebc89c0c336341d3dc0";
+    "2e0cee989ecf83b4808dc7d3cb0b371efdb7aee352e2ac360ce31bafc2ddb0c6";
 } // namespace
 
 RUNTIME_TEST(headless_battle_player_destroys_enemy_and_succeeds) {
@@ -221,6 +225,7 @@ RUNTIME_TEST(player_collects_health_pickup_during_battle) {
     health.z=0.0F;               // under the player tank
     REQUIRE(battle.session.add_pickup(health));
     battle.session.mission().force_state(MatchState::live,0);
+    battle.session.units().get(battle.player)->shield_strength=0;
     REQUIRE(battle.session.apply_damage(battle.player,50,1U,false)==DamageResult::survived);
     battle.session.step(SessionInput{});
     REQUIRE(battle.session.units().get(battle.player)->health==80);   // 50 + (s32)(100*0.3)

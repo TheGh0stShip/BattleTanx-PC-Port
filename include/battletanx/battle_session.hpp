@@ -1,10 +1,12 @@
 #pragma once
 
 #include "battletanx/combat.hpp"
+#include "battletanx/campaign_ai.hpp"
 #include "battletanx/deterministic_rng.hpp"
 #include "battletanx/enemy_control.hpp"
 #include "battletanx/level.hpp"
 #include "battletanx/mission_state.hpp"
+#include "battletanx/navigation_route.hpp"
 #include "battletanx/objective_runtime.hpp"
 #include "battletanx/pickup_runtime.hpp"
 #include "battletanx/projectile_runtime.hpp"
@@ -21,6 +23,7 @@ namespace battletanx {
 // Moves one unit for one 30 Hz tick from its drive input. The session never
 // integrates motion itself; it delegates to this boundary.
 using UnitMotion=std::function<void(UnitRecord& unit,const DriveInput& input)>;
+using RoutePlanner=std::function<RouteResponse(const RouteRequest& request)>;
 
 // Drives a unit through the existing native tank update (update_player_tank)
 // against real level data. The navigation triangle is resolved on first use.
@@ -31,10 +34,14 @@ using UnitMotion=std::function<void(UnitRecord& unit,const DriveInput& input)>;
 // triangle enclosing +/-100000 units, no world shapes), for headless runs.
 [[nodiscard]] UnitMotion open_ground_unit_motion(const AngleTable& angles);
 
+// Plans a recovered navigation route for a campaign control request. The
+// returned response is value-owned and safe to retain across ticks.
+[[nodiscard]] RoutePlanner level_route_planner(const NavigationLevel& navigation);
+
 struct SessionConfig {
     MissionConfig mission{};
     CombatConfig combat{};
-    EnemyControllerConfig enemy{};
+    CampaignAiConfig campaign_ai{};
     PickupOptions pickups{};
     std::uint32_t rng_seed{};   // retail seeds from osGetTime(); headless runs pass a constant
 };
@@ -48,6 +55,7 @@ struct OwnerSetup {
     float armor_scale{retail::human_scale_default};
     float damage_scale{retail::human_scale_default};
     bool objective_base{};
+    std::optional<OwnerDifficulty> difficulty{};
 };
 
 struct UnitSpawn {
@@ -73,7 +81,7 @@ struct SessionInput {
 class BattleSession {
 public:
     BattleSession(SessionConfig config,const AngleTable& angles,UnitMotion motion,
-                  WorldCollision world={});
+                  WorldCollision world={},RoutePlanner routes={});
 
     void add_owner(std::uint8_t index,const OwnerSetup& setup);
     std::optional<EntityId> spawn_unit(const UnitSpawn& spawn);
@@ -141,6 +149,7 @@ private:
     AngleTable angles_;
     UnitMotion motion_;
     WorldCollision world_;
+    RoutePlanner route_planner_;
     UnitPool units_;
     ShellPool shells_;
     std::array<OwnerRecord,owner_capacity> owners_{};
@@ -150,7 +159,7 @@ private:
     std::optional<PickupWeights> pickup_weights_;
     MissionState mission_;
     std::optional<ObjectiveRuntime> objective_;
-    EnemyController enemy_;
+    CampaignAiController campaign_ai_;
     RetailRandom rng_;
     GameplayEventQueue events_{1024U};
     SoundEventQueue sounds_{1024U};
