@@ -57,6 +57,13 @@ int main() {
         const auto near=[](float actual,float expected) {
             return std::abs(actual-expected)<0.000001F;
         };
+        if (!near(corners[0].x,9.0F) || !near(corners[0].z,18.0F)) {
+            std::cerr << "axis-aligned corners:";
+            for (const auto& corner : corners) {
+                std::cerr << " (" << corner.x << ',' << corner.z << ')';
+            }
+            std::cerr << '\n';
+        }
         CHECK(near(corners[0].x,9.0F) && near(corners[0].z,18.0F));
         CHECK(near(corners[1].x,11.0F) && near(corners[1].z,18.0F));
         CHECK(near(corners[2].x,11.0F) && near(corners[2].z,22.0F));
