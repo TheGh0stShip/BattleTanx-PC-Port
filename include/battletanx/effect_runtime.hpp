@@ -93,8 +93,6 @@ inline constexpr std::array<std::array<std::uint8_t,kind_count>,update_group_cou
 namespace models {
 inline constexpr std::uint16_t beam=0x0AU;              // D_802D5A44 (notify_listeners_along_sweep)
 inline constexpr std::uint16_t impact_decal=3U;       // D_802D5A36 (get_impact_model_part, func_8008CED0)
-inline constexpr std::uint16_t color_ramp_particle=0x26U; // D_802D5A7C (draw_color_ramp_effect)
-inline constexpr std::uint16_t scripted_particle=0x47U; // D_802D5ABE (draw_effect_particle)
 inline constexpr std::uint16_t wreck_type0=0x15U;     // draw_kind_selected_level_model func_800A05A0 (kind 26)
 inline constexpr std::uint16_t wreck_type1=0x23U;     //   type 1, variant 0
 inline constexpr std::uint16_t wreck_type1_alt=0x48U; //   type 1, variant != 0
@@ -172,8 +170,6 @@ struct ScriptStep {
 
 struct ParticleDef {
     std::uint16_t duration{}; // def +0x04 (u16)
-    std::int16_t scale_from{};// def +0x08
-    std::int16_t scale_to{};  // def +0x0A
     std::uint16_t flags{};    // def +0x0C: 0x100 chain to next def, 0x80 anchored, 0x10 light
 };
 
@@ -191,12 +187,6 @@ inline constexpr std::array<std::uint32_t,3> oscillator_duration{600U,600U,600U}
     return oscillator_duration[static_cast<std::size_t>(def-oscillator_def_first)];
 }
 [[nodiscard]] const ParticleDef* particle_def(std::uint8_t index) noexcept;
-// update_effect_particle_value / update_effect_value_ramp. Retail stores the
-// interpolated value as an s32 and draw_effect_particle divides it by 1024.
-[[nodiscard]] float particle_render_scale(const ParticleDef& def,std::uint16_t elapsed) noexcept;
-// draw_color_ramp_effect passes the raw interpolated value times 0.8 to its
-// keyed billboard submission rather than using the 1/1024 particle scale.
-[[nodiscard]] float color_ramp_render_scale(const ParticleDef& def,std::uint16_t elapsed) noexcept;
 
 enum class SpawnStatus : std::uint8_t { spawned, pool_exhausted, unsupported_variant, unsupported_def };
 static_assert(std::is_same_v<std::underlying_type_t<SpawnStatus>,std::uint8_t>);
@@ -268,7 +258,6 @@ struct EffectRenderItem {
     float normal_x{}, normal_z{}; // decal only
     std::uint16_t angle{};         // beam only
     float length{};                // beam only
-    float scale{1.0F};             // scripted particles: X/Z billboard scale
 };
 using EffectRenderQueue=EventQueue<EffectRenderItem>;
 

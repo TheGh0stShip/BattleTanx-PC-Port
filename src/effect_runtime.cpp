@@ -63,31 +63,19 @@ constexpr std::array<Script,script_count> scripts{{
 constexpr std::array<std::uint8_t,script_count> variant_script{
     17,2,4,5,6,7,8,9,17,18,3,13,14,15,0,11,12,16,10,19,20,21,22,23,24,25,26,27};
 
-// gEffectParticleDefTable D_80137940 resolved to
-// {def+0x04 u16, def+0x08 s16, def+0x0A s16, def+0x0C u16}.
+// gEffectParticleDefTable D_80137940 resolved to {def+0x04 u16, def+0x0C u16}.
 constexpr std::array<ParticleDef,particle_def_count> defs{{
-    {128,20,80,0x010A},{256,80,250,0x010A},{768,250,75,0x000A},
-    {192,50,25,0x010A},{256,25,45,0x010A},{128,45,45,0x000A},
-    {192,10,50,0x010A},{4096,50,75,0x010A},{256,75,75,0x000A},
-    {192,50,150,0x010A},{512,150,150,0x010A},{256,150,150,0x000A},
-    {384,50,300,0x010A},{1024,300,450,0x010A},{256,450,450,0x000A},
-    {384,50,600,0x010A},{1024,600,900,0x010A},{256,900,900,0x000A},
-    {3072,50,8000,0x0010},{3072,50,8000,0x0000},{3072,50,8000,0x0000},
-    {3072,50,8000,0x0000},{3072,50,8000,0x0000},{192,50,150,0x010A},
-    {512,150,150,0x010A},{256,150,150,0x000A},{384,50,300,0x010A},
-    {256,300,450,0x010A},{256,450,450,0x000A},{192,10,25,0x010A},
-    {256,25,37,0x010A},{128,37,37,0x000A},{384,1,4,0x010B},
-    {128,4,2,0x010B},{128,2,2,0x000B},{1536,8,8,0x000B},
-    {96,10,75,0x0182},{64,75,115,0x0102},{64,115,115,0x0002},
-    {192,50,300,0x010A},{1536,300,525,0x010A},{256,525,525,0x000A},
-    {448,20,150,0x000A},{1536,50,2000,0x0000},{240,50,600,0x0010},
-    {192,10,25,0x010A},{256,25,37,0x010A},{128,37,37,0x000A},
-    {384,50,300,0x010A},{1024,300,450,0x010A},{256,450,450,0x000A},
-    {256,10,18,0x010A},{128,18,18,0x000A},{1536,300,525,0x010A},
-    {256,525,525,0x000A},{192,5,10,0x010A},{256,10,15,0x010A},
-    {128,15,15,0x000A},{2816,15,270,0x0102},{256,270,270,0x000A},
-    {0,95,250,0x0008},{0,200,100,0x0008},{0,150,150,0x0008},
-    // 60..62 are ParticleSweepDefs: +0x04 is a u32 (see oscillator_duration).
+    {128,0x010A},{256,0x010A},{768,0x000A},{192,0x010A},{256,0x010A},{128,0x000A},
+    {192,0x010A},{4096,0x010A},{256,0x000A},{192,0x010A},{512,0x010A},{256,0x000A},
+    {384,0x010A},{1024,0x010A},{256,0x000A},{384,0x010A},{1024,0x010A},{256,0x000A},
+    {3072,0x0010},{3072,0x0000},{3072,0x0000},{3072,0x0000},{3072,0x0000},{192,0x010A},
+    {512,0x010A},{256,0x000A},{384,0x010A},{256,0x010A},{256,0x000A},{192,0x010A},
+    {256,0x010A},{128,0x000A},{384,0x010B},{128,0x010B},{128,0x000B},{1536,0x000B},
+    {96,0x0182},{64,0x0102},{64,0x0002},{192,0x010A},{1536,0x010A},{256,0x000A},
+    {448,0x000A},{1536,0x0000},{240,0x0010},{192,0x010A},{256,0x010A},{128,0x000A},
+    {384,0x010A},{1024,0x010A},{256,0x000A},{256,0x010A},{128,0x000A},{1536,0x010A},
+    {256,0x000A},{192,0x010A},{256,0x010A},{128,0x000A},{2816,0x0102},{256,0x000A},
+    {0,0x0008},{0,0x0008},{0,0x0008}, // 60..62 are ParticleSweepDefs: +0x04 is a u32 (see oscillator_duration)
 }};
 
 constexpr std::uint16_t flag_chain=0x0100U;
@@ -112,25 +100,6 @@ const ScriptStep* script_step(std::uint8_t v,std::uint16_t step) noexcept {
 
 const ParticleDef* particle_def(std::uint8_t index) noexcept {
     return index<particle_def_count ? &defs[index] : nullptr;
-}
-
-namespace {
-std::int32_t interpolated_particle_value(const ParticleDef& def,std::uint16_t elapsed) noexcept {
-    if (def.duration==0U) return def.scale_from;
-    const std::uint16_t clamped=std::min(elapsed,def.duration);
-    const std::int32_t delta=static_cast<std::int32_t>(def.scale_to)-def.scale_from;
-    const float rate=static_cast<float>(delta)/static_cast<float>(def.duration);
-    return static_cast<std::int32_t>(static_cast<float>(def.scale_from)+
-                                     static_cast<float>(clamped)*rate);
-}
-} // namespace
-
-float particle_render_scale(const ParticleDef& def,std::uint16_t elapsed) noexcept {
-    return static_cast<float>(interpolated_particle_value(def,elapsed))/1024.0F;
-}
-
-float color_ramp_render_scale(const ParticleDef& def,std::uint16_t elapsed) noexcept {
-    return static_cast<float>(interpolated_particle_value(def,elapsed))*0.8F;
 }
 
 void EffectRuntime::reset() noexcept {
@@ -334,7 +303,7 @@ EventMapping EffectRuntime::consume(const EffectEvent& event,std::uint16_t clock
             .index=event.variant,.elapsed=0U,.duration=0U,.flags=0U,
             .model_slot=models::beam,.anchor=event.source,.owner=event.owner,
             .x=event.x,.y=event.y,.z=event.z,.normal_x=0.0F,.normal_z=0.0F,
-            .angle=event.angle,.length=event.length,.scale=1.0F};
+            .angle=event.angle,.length=event.length};
         return EventMapping::spawned;
     case EffectEventKind::bounce:
         // TEMPORARY POLICY: nuke/grenade bounces spawn no pool visual here; the
@@ -499,27 +468,19 @@ void EffectRuntime::collect(EffectRenderQueue& out) const {
             const ParticleDef* def=(e.kind==EffectKind::decal || e.kind==EffectKind::smoke) ? nullptr : particle_def(e.index);
             const std::optional<std::uint32_t> sweep=e.kind==EffectKind::oscillator ? oscillator_duration_for(e.index)
                                                                                      : std::nullopt;
-            const bool ordinary=e.kind==EffectKind::particle;
-            const bool ramp=e.kind==EffectKind::ramp;
-            const std::uint16_t model=ordinary ? models::scripted_particle :
-                ramp ? models::color_ramp_particle : e.model_slot;
-            const float scale=def==nullptr ? 1.0F : ordinary ? particle_render_scale(*def,e.elapsed) :
-                ramp ? color_ramp_render_scale(*def,e.elapsed) : 1.0F;
             out.push(EffectRenderItem{.item=RenderItemKind::pool_effect,.kind=e.kind,.status={},.slot=i,.serial=e.serial,
                                       .index=e.index,.elapsed=e.elapsed,
                                       .duration=sweep ? static_cast<std::uint16_t>(*sweep)
                                                : def!=nullptr ? def->duration : std::uint16_t{},
                                       .flags=def!=nullptr ? def->flags : std::uint16_t{},
-                                      .model_slot=model,.anchor=e.anchor,.owner=e.owner,
-                                      .x=e.x,.y=e.y,.z=e.z,.normal_x=e.normal_x,.normal_z=e.normal_z,
-                                      .angle=0U,.length=0.0F,.scale=scale});
+                                      .model_slot=e.model_slot,.anchor=e.anchor,.owner=e.owner,
+                                      .x=e.x,.y=e.y,.z=e.z,.normal_x=e.normal_x,.normal_z=e.normal_z});
         }
     }
     for (const StatusVisual& s : status_) {
         if (!s.active) continue;
         out.push(EffectRenderItem{.item=RenderItemKind::status,.kind={},.status=s.kind,.slot=no_link,.serial=0U,.index=0U,.elapsed=0U,.duration=0U,.flags=0U,.model_slot=s.model_slot,
-                                  .anchor=s.subject,.owner=s.owner,.x=s.x,.y=s.y,.z=s.z,.normal_x=0.0F,.normal_z=0.0F,
-                                  .angle=0U,.length=0.0F,.scale=1.0F});
+                                  .anchor=s.subject,.owner=s.owner,.x=s.x,.y=s.y,.z=s.z,.normal_x=0.0F,.normal_z=0.0F});
     }
     for (std::uint8_t i=0U; i<beam_count_; ++i) out.push(beams_[i]);
 }
