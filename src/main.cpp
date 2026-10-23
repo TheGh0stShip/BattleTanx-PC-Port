@@ -76,7 +76,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
     const auto screen_y=[&](float value) {
         return 32+static_cast<int>((value-min_z)/span_z*(battletanx::native_height-64));
     };
-    auto tank=battletanx::spawn_player_tank(navigation);
+    auto tank=battletanx::spawn_player_tank(world,navigation);
     battletanx::PlayerProjectile projectile{};
     while (platform->pump(current)) {
         const auto frame_start=std::chrono::steady_clock::now();

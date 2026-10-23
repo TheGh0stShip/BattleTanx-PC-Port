@@ -211,21 +211,29 @@ int main() {
         drive_triangle.corners[2].vertex=3U;
         drive_nav.triangles.resize(2U);
         drive_nav.triangles[1]=drive_triangle;
-        auto tank=battletanx::spawn_player_tank(drive_nav);
+        battletanx::WorldLevel drive_world;
+        battletanx::WorldItem spawn;
+        spawn.type=25;
+        spawn.x=-400.0F;
+        spawn.z=-400.0F;
+        spawn.angle=0x4000U;
+        drive_world.items.push_back(spawn);
+        auto tank=battletanx::spawn_player_tank(drive_world,drive_nav);
         CHECK(tank.navigation_triangle==1U);
-        const float start_z=tank.z;
+        CHECK(tank.x==-400.0F && tank.z==-400.0F && tank.heading_degrees==90.0F);
+        const float start_x=tank.x;
         battletanx::PlayerInput drive{};
         drive.stick_y=80;
         battletanx::update_player_tank(tank,drive,drive_nav,angles);
-        CHECK(tank.z>start_z && tank.navigation_triangle==1U);
+        CHECK(tank.x>start_x && tank.navigation_triangle==1U);
         battletanx::PlayerProjectile projectile{};
         battletanx::PlayerInput fire{};
         fire.pressed=0x8000U;
         CHECK(battletanx::try_fire_player_projectile(projectile,tank,fire,angles));
         CHECK(projectile.active && projectile.frames_remaining==120U);
-        const float projectile_z=projectile.z;
+        const float projectile_x=projectile.x;
         battletanx::update_player_projectile(projectile,drive_nav);
-        CHECK(projectile.active && projectile.z>projectile_z);
+        CHECK(projectile.active && projectile.x>projectile_x);
         CHECK(!battletanx::try_fire_player_projectile(projectile,tank,fire,angles));
     }
 

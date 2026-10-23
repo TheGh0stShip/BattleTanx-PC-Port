@@ -65,7 +65,8 @@ game's corner ordering for later collision and world-query integration.
 library. It creates a native Linux or Windows window, maps keyboard and game
 controllers to the original controller representation, and presents a native
 pixel surface. It does not execute or translate N64 code. It plots decoded
-level-one retail placements and starts a player tank on open navigation data.
+level-one retail placements and starts a player tank from the decoded retail
+group-zero spawn marker on open navigation data.
 Drive with the left stick or WASD and fire the current test projectile with the
 south face button or X. Movement and projectile travel stop at navigation
 boundaries and blocked cells. Escape or closing the window exits.

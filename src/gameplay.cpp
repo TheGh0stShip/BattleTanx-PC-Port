@@ -60,15 +60,21 @@ PlayerInput translate_player_input(const ControllerPad& current,
     };
 }
 
-PlayerTank spawn_player_tank(const NavigationLevel& navigation) {
-    for (std::size_t index=1U; index<navigation.triangles.size(); ++index) {
-        if (navigation.kind_enabled[navigation.triangles[index].kind]!=0U) continue;
-        const auto position=navigation_triangle_centroid(
-            navigation,static_cast<std::uint16_t>(index));
-        return PlayerTank{position.x,position.z,0.0F,0.0F,0.0F,0.0F,
-                          static_cast<std::uint16_t>(index)};
+PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navigation) {
+    for (const auto& item : world.items) {
+        if (item.type!=25 || (item.parameter>>4U)!=0U) continue;
+        const NavigationVertex position{item.x,item.z};
+        for (std::size_t index=1U; index<navigation.triangles.size(); ++index) {
+            if (navigation.kind_enabled[navigation.triangles[index].kind]!=0U ||
+                !navigation_point_inside_triangle(
+                    navigation,position,static_cast<std::uint16_t>(index))) continue;
+            const float heading=static_cast<float>(item.angle)*(360.0F/65536.0F);
+            return PlayerTank{position.x,position.z,0.0F,0.0F,heading,heading,
+                              static_cast<std::uint16_t>(index)};
+        }
+        throw std::runtime_error("player spawn marker is outside open navigation data");
     }
-    throw std::runtime_error("level has no open player spawn triangle");
+    throw std::runtime_error("level has no group-zero player spawn marker");
 }
 
 void update_player_tank(PlayerTank& tank,const PlayerInput& input,
