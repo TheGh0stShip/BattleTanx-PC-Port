@@ -2,6 +2,7 @@
 
 #include "battletanx/runtime_math.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <vector>
