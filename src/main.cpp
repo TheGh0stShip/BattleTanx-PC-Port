@@ -35,6 +35,18 @@
 namespace {
 constexpr std::size_t pickup_model_kind_count=23U;
 
+std::array<std::uint32_t,battletanx::turret_types> load_turret_model_slots(
+    const battletanx::Rom& rom) {
+    constexpr std::size_t table_offset=0xB5FB0U;
+    const auto view=rom.view();
+    std::array<std::uint32_t,battletanx::turret_types> slots{};
+    for (std::size_t index=0U; index<slots.size(); ++index) {
+        slots[index]=view.u32(table_offset+index*4U);
+        if (slots[index]>=182U) throw std::runtime_error("turret model slot is invalid");
+    }
+    return slots;
+}
+
 std::array<std::uint32_t,pickup_model_kind_count> load_pickup_model_slots(
     const battletanx::Rom& rom) {
     constexpr std::size_t table_offset=0xB5CE0U;
@@ -60,6 +72,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
                              const battletanx::MusicTrack& music,
                              const battletanx::HudAssets& hud_assets,
                              const std::array<std::uint32_t,pickup_model_kind_count>& pickup_models,
+                             const std::array<std::uint32_t,battletanx::turret_types>& turret_models,
                              const battletanx::CampaignWaveDefinition& wave,
                              std::optional<battletanx::TeamSpawnTable> team_spawns,
                              battletanx::CampaignRecord campaign,
@@ -314,6 +327,21 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
             }
             draw.items.push_back({assets.set_base()+models->shadow_slot,body,5U,0});
         });
+        for (const auto& turret:session.turrets()) {
+            if (turret.removed || (turret.flags&battletanx::turret_rebuilding)!=0U ||
+                turret.type>=turret_models.size()) continue;
+            const auto ground=terrain.sample(turret.x,turret.z);
+            const float y=ground ? ground->height : 0.0F;
+            auto transform=battletanx::yaw_translation_matrix(
+                turret.heading,turret.x,y,turret.z,angles);
+            const float scale=battletanx::turret_scale[turret.type];
+            for (std::size_t row=0U; row<3U; ++row) {
+                for (std::size_t column=0U; column<3U; ++column) {
+                    transform[row*4U+column]*=scale;
+                }
+            }
+            draw.items.push_back({assets.set_base()+turret_models[turret.type],transform,3U,0});
+        }
         session.projectiles().for_each(
             [&](battletanx::EntityId,const battletanx::WeaponProjectile& shell) {
             if (shell.effect_kind!=34U) return;
@@ -498,6 +526,7 @@ int main(int argc, char** argv) {
         if (show_window) music=battletanx::render_music_sequence(
             rom,static_cast<std::uint32_t>(wave->mission_id));
         const auto pickup_models=load_pickup_model_slots(rom);
+        const auto turret_models=load_turret_model_slots(rom);
         for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x52U}) {
             if (active_assets.set_base()+slot>=active_assets.sets().size() ||
                 active_assets.set(active_assets.set_base()+slot).lod_count==0U) {
@@ -518,7 +547,7 @@ int main(int argc, char** argv) {
         if (show_window) {
             run_platform_diagnostic(
                 *active_world,*active_navigation,angles,bindings,active_assets,
-                sounds,*music,hud_assets,pickup_models,*wave,
+                sounds,*music,hud_assets,pickup_models,turret_models,*wave,
                 battletanx::parse_team_spawn_table(*active_world_stream),
                 *campaign,settings,pak_path);
         }
