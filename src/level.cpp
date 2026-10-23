@@ -107,6 +107,7 @@ WorldLevel parse_world_level(std::span<const std::uint8_t> bytes) {
     }
     const std::size_t header=result.section_offsets[0];
     result.flags=view.u32(header+0x20U);
+    result.set_base=view.u32(header+0x2DCU);
     const std::int32_t declared_groups=view.s32(header+0x27CU);
     const std::int32_t optional_group=view.s32(header+0x280U);
     if (declared_groups<0 || static_cast<std::size_t>(declared_groups)+
@@ -148,7 +149,7 @@ WorldLevel parse_world_level(std::span<const std::uint8_t> bytes) {
         item.angle=view.u16(offset+0x14U);
         item.link=view.s16(offset+0x16U);
         item.shape=view.s16(offset+0x18U);
-        if ((item.flags&1U)==0U && (item.shape<0 || static_cast<std::size_t>(item.shape)>=counts[3])) {
+        if (item.shape<0 || static_cast<std::size_t>(item.shape)>=counts[3]) {
             throw std::runtime_error("world item shape index exceeds its section");
         }
         result.items.push_back(item);
@@ -160,6 +161,43 @@ WorldLevel parse_world_level(std::span<const std::uint8_t> bytes) {
         result.shapes.push_back({view.u8(offset),view.u16(offset+2U),
                                  view.s16(offset+4U),view.s16(offset+6U),
                                  view.s16(offset+8U),view.s16(offset+0xAU)});
+    }
+    const std::size_t range_start=result.section_offsets[5];
+    result.model_ranges.reserve(counts[5]);
+    for (std::size_t index=0; index<counts[5]; ++index) {
+        const std::size_t offset=range_start+index*0x04U;
+        WorldModelRange range{view.u8(offset),view.u16(offset+2U)};
+        if (static_cast<std::size_t>(range.first_part)+range.part_count>counts[6]) {
+            throw std::runtime_error("world model range exceeds the part section");
+        }
+        result.model_ranges.push_back(range);
+    }
+    const std::size_t part_start=result.section_offsets[6];
+    result.model_parts.reserve(counts[6]);
+    for (std::size_t index=0; index<counts[6]; ++index) {
+        const std::size_t offset=part_start+index*0x10U;
+        WorldModelPart part{view.u32(offset),view.u16(offset+4U),view.u16(offset+6U),
+                            view.u32(offset+8U),view.u32(offset+0xCU)};
+        if (!part.empty() && (part.material_size==0U || part.geometry_size==0U)) {
+            throw std::runtime_error("world model part has an empty asset blob");
+        }
+        result.model_parts.push_back(part);
+    }
+    for (const auto& shape:result.shapes) {
+        if (shape.lod_count==0U) continue;
+        if (shape.lod_count>3U ||
+            static_cast<std::size_t>(shape.first_range)+shape.lod_count>
+                result.model_ranges.size()) {
+            throw std::runtime_error("world model set exceeds the range section");
+        }
+    }
+    for (const auto& item:result.items) {
+        if (result.shapes[static_cast<std::size_t>(item.shape)].lod_count==0U) {
+            throw std::runtime_error("world placement references an absent model set");
+        }
+    }
+    if (static_cast<std::size_t>(result.set_base)+181U>=result.shapes.size()) {
+        throw std::runtime_error("world model slot table exceeds the set section");
     }
     return result;
 }

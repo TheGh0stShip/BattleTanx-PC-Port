@@ -8,10 +8,13 @@
 #include "battletanx/geometry.hpp"
 #include "battletanx/host_input.hpp"
 #include "battletanx/lzari.hpp"
+#include "battletanx/material.hpp"
+#include "battletanx/model.hpp"
 #include "battletanx/level.hpp"
 #include "battletanx/rom.hpp"
 #include "battletanx/resource.hpp"
 #include "battletanx/sha256.hpp"
+#include "battletanx/texture.hpp"
 
 #include <array>
 #include <cmath>
@@ -53,6 +56,98 @@ int main() {
     CHECK(battletanx::fixed_rate_tick(1500000000U,30U)==45U);
     CHECK(battletanx::fixed_rate_tick(UINT64_MAX,0U)==0U);
     CHECK(battletanx::fixed_rate_tick(UINT64_MAX,30U)>UINT64_C(553000000000));
+
+    {
+        std::array<std::uint8_t,8> pool{};
+        const battletanx::BlobView blob(pool,{2U,4U});
+        CHECK(blob.bytes().size()==4U && blob.at(1U,2U).size()==2U);
+        bool rejected=false;
+        try { static_cast<void>(battletanx::BlobView(pool,{7U,2U})); }
+        catch (const std::out_of_range&) { rejected=true; }
+        CHECK(rejected);
+
+        std::vector<std::uint8_t> geometry(0x48U);
+        put_u32(geometry,0U,0x04000C2FU);
+        put_u32(geometry,4U,0x18U);
+        put_u32(geometry,8U,0xBF000000U);
+        put_u32(geometry,12U,0x00000204U);
+        put_u32(geometry,16U,0xB8000000U);
+        put_u16(geometry,0x18U,10U);
+        put_u16(geometry,0x1AU,20U);
+        put_u16(geometry,0x1CU,static_cast<std::uint16_t>(-30));
+        put_u16(geometry,0x20U,64U);
+        put_u16(geometry,0x22U,128U);
+        geometry[0x24U]=255U;
+        geometry[0x25U]=128U;
+        geometry[0x26U]=64U;
+        geometry[0x27U]=255U;
+        const auto mesh=battletanx::decode_geometry_blob(geometry);
+        CHECK(mesh.vertices.size()==3U && mesh.indices.size()==3U);
+        CHECK(mesh.vertices[0].x==10.0F && mesh.vertices[0].y==20.0F &&
+              mesh.vertices[0].z==-30.0F);
+        CHECK(mesh.vertices[0].u==1.0F && mesh.vertices[0].v==2.0F);
+        CHECK(mesh.indices[0]==0U && mesh.indices[1]==1U && mesh.indices[2]==2U);
+        geometry[15U]=6U;
+        rejected=false;
+        try { static_cast<void>(battletanx::decode_geometry_blob(geometry)); }
+        catch (const std::runtime_error&) { rejected=true; }
+        CHECK(rejected);
+    }
+
+    {
+        constexpr std::array<std::uint8_t,4> rgba16{0xF8U,0x01U,0x07U,0xC1U};
+        const auto rgba=battletanx::decode_rgba16_texture(rgba16,2U,1U);
+        CHECK(rgba.pixels[0]==0xFFFF0000U && rgba.pixels[1]==0xFF00FF00U);
+        constexpr std::array<std::uint8_t,1> transparent_red{0xF8U};
+        bool rejected=false;
+        try { static_cast<void>(
+            battletanx::decode_rgba16_texture(transparent_red,1U,1U)); }
+        catch (const std::runtime_error&) { rejected=true; }
+        CHECK(rejected);
+        constexpr std::array<std::uint8_t,2> transparent_red_full{0xF8U,0x00U};
+        CHECK(battletanx::decode_rgba16_texture(
+            transparent_red_full,1U,1U).pixels[0]==0x00FF0000U);
+
+        std::array<std::uint8_t,32> palette{};
+        palette[0]=0x00U;
+        palette[1]=0x01U;
+        palette[2]=0xFFU;
+        palette[3]=0xFFU;
+        constexpr std::array<std::uint8_t,2> indices{0x01U,0x10U};
+        const auto ci=battletanx::decode_ci4_texture(indices,palette,2U,2U);
+        CHECK(ci.pixels[0]==0xFF000000U && ci.pixels[1]==0xFFFFFFFFU &&
+              ci.pixels[2]==0xFFFFFFFFU && ci.pixels[3]==0xFF000000U);
+        constexpr std::array<std::uint8_t,1> intensities{0xF0U};
+        const auto i4=battletanx::decode_i4_texture(intensities,2U,1U);
+        CHECK(i4.pixels[0]==0xFFFFFFFFU && i4.pixels[1]==0xFF000000U);
+        constexpr std::array<std::uint8_t,2> rgba32{0U,0U};
+        rejected=false;
+        try { static_cast<void>(battletanx::decode_rgba32_texture(rgba32,1U,1U)); }
+        catch (const std::runtime_error&) { rejected=true; }
+        CHECK(rejected);
+        rejected=false;
+        try { static_cast<void>(battletanx::decode_i8_texture({},2048U,1U)); }
+        catch (const std::runtime_error&) { rejected=true; }
+        CHECK(rejected);
+    }
+
+    {
+        std::vector<std::uint8_t> material(24U);
+        put_u32(material,0U,0xB900031DU);
+        put_u32(material,4U,0x00553078U);
+        put_u32(material,8U,0xFCFFFFFFU);
+        put_u32(material,12U,0xFFFDF6FBU);
+        put_u32(material,16U,0xB8000000U);
+        const auto decoded=battletanx::decode_material_blob(material,0U);
+        CHECK(decoded.alpha==battletanx::AlphaMode::edge_test);
+        CHECK(decoded.combine==battletanx::CombineMode::primitive);
+        CHECK(!decoded.texture);
+        material[8U]=0xAAU;
+        bool rejected=false;
+        try { static_cast<void>(battletanx::decode_material_blob(material,0U)); }
+        catch (const std::runtime_error&) { rejected=true; }
+        CHECK(rejected);
+    }
 
     {
         battletanx::ControllerPakRecord record;
@@ -103,13 +198,14 @@ int main() {
         }
         CHECK(navigation_count==18U);
 
-        std::vector<std::uint8_t> world(0x340U);
+        std::vector<std::uint8_t> world(0xBD0U);
         constexpr std::array<std::uint32_t,9> offsets{
-            0x24U,0x304U,0x318U,0x334U,0x340U,0x340U,0x340U,0x340U,0x340U};
+            0x24U,0x304U,0x318U,0x334U,0xBBCU,0xBBCU,0xBC0U,0xBD0U,0xBD0U};
         for (std::size_t index=0; index<offsets.size(); ++index) {
             put_u32(world,index*4U,offsets[index]);
         }
         put_u32(world,0x24U+0x20U,0x12345678U);
+        put_u32(world,0x24U+0x2DCU,0U);
         put_u32(world,0x24U+0x27CU,1U);
         put_u32(world,0x24U+0x280U,0xFFFFFFFFU);
         put_u16(world,0x304U,1U);
@@ -122,18 +218,30 @@ int main() {
         put_u16(world,0x32CU,0x4000U);
         put_u16(world,0x32EU,0xFFFFU);
         put_u16(world,0x330U,0U);
-        put_u16(world,0x336U,9U);
+        for (std::size_t shape=0; shape<182U; ++shape) {
+            world[0x334U+shape*0xCU]=1U;
+            put_u16(world,0x336U+shape*0xCU,0U);
+        }
         put_u16(world,0x338U,0xFFF6U);
         put_u16(world,0x33AU,0xFFECU);
         put_u16(world,0x33CU,30U);
         put_u16(world,0x33EU,40U);
+        world[0xBBCU]=1U;
+        put_u16(world,0xBBEU,0U);
+        put_u32(world,0xBC0U,0U);
+        put_u16(world,0xBC4U,0U);
+        put_u16(world,0xBC6U,8U);
+        put_u32(world,0xBC8U,0U);
+        put_u32(world,0xBCCU,8U);
         const auto parsed=battletanx::parse_world_level(world);
         CHECK(parsed.flags==0x12345678U);
         CHECK(parsed.groups.size()==1U && parsed.groups[0].item_count==1U);
         CHECK(parsed.items.size()==1U && parsed.items[0].kind==7U);
         CHECK(parsed.items[0].x==1.0F && parsed.items[0].z==-2.5F);
-        CHECK(parsed.shapes.size()==1U && parsed.shapes[0].slot==9U);
+        CHECK(parsed.shapes.size()==182U && parsed.shapes[0].first_range==0U);
         CHECK(parsed.shapes[0].min_x==-10 && parsed.shapes[0].max_z==40);
+        CHECK(parsed.model_ranges.size()==1U && parsed.model_ranges[0].part_count==1U);
+        CHECK(parsed.model_parts.size()==1U && parsed.model_parts[0].geometry_size==8U);
 
         std::vector<std::uint8_t> navigation(0x162U);
         put_u32(navigation,0U,static_cast<std::uint32_t>(navigation.size()));

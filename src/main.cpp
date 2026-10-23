@@ -4,6 +4,7 @@
 #include "battletanx/fixed_tick.hpp"
 #include "battletanx/lzari.hpp"
 #include "battletanx/level.hpp"
+#include "battletanx/model.hpp"
 #include "battletanx/platform.hpp"
 #include "battletanx/resource.hpp"
 #include "battletanx/rom.hpp"
@@ -183,8 +184,15 @@ int main(int argc, char** argv) {
         std::size_t world_groups=0U;
         std::size_t world_items=0U;
         std::size_t navigation_triangles=0U;
+        battletanx::ModelGeometryAudit model_audit{};
         for (const auto& descriptor : battletanx::level_stream_descriptors()) {
             auto world=battletanx::load_world_level(rom,descriptor);
+            const auto level_audit=battletanx::audit_model_geometry(rom,world);
+            model_audit.part_references+=level_audit.part_references;
+            model_audit.material_blobs+=level_audit.material_blobs;
+            model_audit.geometry_blobs+=level_audit.geometry_blobs;
+            model_audit.vertices+=level_audit.vertices;
+            model_audit.triangles+=level_audit.triangles;
             world_groups+=world.groups.size();
             world_items+=world.items.size();
             if (descriptor.index==1) preview_world=std::move(world);
@@ -197,6 +205,19 @@ int main(int argc, char** argv) {
         std::cout << "Validated 22 world streams and 18 navigation streams: "
                   << world_groups << " groups, " << world_items << " placements, "
                   << navigation_triangles << " navigation triangles\n";
+        std::cout << "Validated " << model_audit.geometry_blobs
+                  << " level-local model geometry references: " << model_audit.vertices
+                  << " vertices, " << model_audit.triangles << " triangles\n";
+        const auto preview_assets=battletanx::ModelAssets::load(rom,*preview_world);
+        for (const std::size_t slot:{0x0BU,0x0CU,0x0DU,0x0EU,0x24U,0x52U}) {
+            if (preview_assets.set_base()+slot>=preview_assets.sets().size() ||
+                preview_assets.set(preview_assets.set_base()+slot).lod_count==0U) {
+                throw std::runtime_error("level-one native model slot is absent");
+            }
+        }
+        std::cout << "Decoded level-one native model cache: "
+                  << preview_assets.meshes().size() << " meshes, "
+                  << preview_assets.materials().size() << " materials\n";
         std::cout << "Native runtime foundation is ready; gameplay bring-up is in progress.\n";
         if (show_window) {
             run_platform_diagnostic(*preview_world,*preview_navigation,angles,bindings);

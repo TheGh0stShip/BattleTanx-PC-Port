@@ -64,6 +64,11 @@ The original interpolated 16-bit angle behavior reads its 257-sample sine
 table directly from the verified ROM rather than embedding retail data.
 Recovered rotated-bound geometry uses the same angle path and preserves the
 game's corner ordering for later collision and world-query integration.
+The native asset path now validates model sets, LOD ranges, parts, material and
+geometry pool bounds, and decodes the retail vertex/triangle command stream.
+Level-one assets are cached as host meshes and materials. Supported texture
+decoders cover the five formats used by these assets: RGBA16, CI4 with TLUT,
+RGBA32, I4, and I8. No original display commands are executed at runtime.
 
 `--window` runs the native gameplay bring-up through the pinned SDL2 host
 library. It creates a native Linux or Windows window, maps keyboard and game

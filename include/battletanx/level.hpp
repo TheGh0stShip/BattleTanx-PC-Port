@@ -43,20 +43,41 @@ struct WorldItem {
 };
 
 struct WorldShape {
-    std::uint8_t flags{};
-    std::uint16_t slot{};
+    std::uint8_t lod_count{};
+    std::uint16_t first_range{};
     std::int16_t min_x{};
     std::int16_t min_z{};
     std::int16_t max_x{};
     std::int16_t max_z{};
 };
 
+struct WorldModelRange {
+    std::uint8_t part_count{};
+    std::uint16_t first_part{};
+};
+
+struct WorldModelPart {
+    std::uint32_t material_offset{};
+    std::uint16_t animation{};
+    std::uint16_t material_size{};
+    std::uint32_t geometry_offset{};
+    std::uint32_t geometry_size{};
+
+    [[nodiscard]] bool empty() const noexcept {
+        return material_offset==0U && animation==0U && material_size==0U &&
+               geometry_offset==0U && geometry_size==0U;
+    }
+};
+
 struct WorldLevel {
     std::uint32_t flags{};
+    std::uint32_t set_base{};
     std::array<std::size_t,9> section_offsets{};
     std::vector<WorldGroup> groups;
     std::vector<WorldItem> items;
     std::vector<WorldShape> shapes;
+    std::vector<WorldModelRange> model_ranges;
+    std::vector<WorldModelPart> model_parts;
 };
 
 struct NavigationVertex { float x{},z{}; };

@@ -17,9 +17,12 @@ add_library(battletanx_core
     src/host_input.cpp
     src/level.cpp
     src/lzari.cpp
+    src/material.cpp
+    src/model.cpp
     src/resource.cpp
     src/rom.cpp
     src/sha256.cpp
+    src/texture.cpp
 )
 target_include_directories(battletanx_core PUBLIC include)
 # GCC 15.2 currently miscompiles the recovered interleaved corner transform
