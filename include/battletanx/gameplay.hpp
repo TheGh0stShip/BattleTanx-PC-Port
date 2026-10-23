@@ -63,7 +63,8 @@ PlayerTank spawn_player_tank(const WorldLevel& world,const NavigationLevel& navi
 void update_player_tank(PlayerTank& tank,const PlayerInput& input,
                         const NavigationLevel& navigation,const AngleTable& angles);
 bool try_fire_player_projectile(PlayerProjectile& projectile,const PlayerTank& tank,
-                                const PlayerInput& input,const AngleTable& angles);
+                                const PlayerInput& input,const NavigationLevel& navigation,
+                                const AngleTable& angles);
 void update_player_projectile(PlayerProjectile& projectile,
                               const NavigationLevel& navigation);
 

@@ -10,6 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(battletanx_core
     src/angle.cpp
     src/bundle.cpp
+    src/controller_pak.cpp
     src/gameplay.cpp
     src/geometry.cpp
     src/host_input.cpp

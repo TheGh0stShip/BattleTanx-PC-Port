@@ -79,6 +79,18 @@ shoulders map directly, the left trigger supplies Z, Start supplies Start, and
 the right stick supplies the four C buttons. Keyboard controls remain available
 for port one: WASD, X/Z, Left Shift, Enter, Q/E, arrows, and I/J/K/L.
 
+## Saves
+
+BattleTanx uses a Controller Pak rather than cartridge EEPROM. The native
+runtime mounts `battletanx-pak1.mpk` in the SDL per-user application-data
+directory. It is a standard 32 KiB Controller Pak filesystem image, compatible
+with common N64 tools, containing BattleTanx's original 256-byte game file.
+The game file's first big-endian word is the recovered retail checksum over
+bytes 4 through 255. Reads reject bad filesystem metadata, size, chains, or
+game checksums, and writes are read back and verified, matching the retail save
+path's integrity checks. Campaign/menu integration will populate the recovered
+record fields as those systems enter the port.
+
 ## Architecture
 
 The original game uses big-endian, 32-bit N64 data and address tokens. The PC

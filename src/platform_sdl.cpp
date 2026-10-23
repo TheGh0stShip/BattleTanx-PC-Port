@@ -190,4 +190,12 @@ std::unique_ptr<Platform> Platform::create(std::string_view title) {
     return std::make_unique<SdlPlatform>(title);
 }
 
+std::filesystem::path Platform::controller_pak_path() {
+    char* base=SDL_GetPrefPath("TheGh0stShip","BattleTanx");
+    if (base==nullptr) throw sdl_error("user-data path lookup failed");
+    const std::filesystem::path result=std::filesystem::path(base)/"battletanx-pak1.mpk";
+    SDL_free(base);
+    return result;
+}
+
 } // namespace battletanx

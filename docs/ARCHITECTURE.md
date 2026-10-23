@@ -52,6 +52,10 @@ does not execute cartridge code.
   reproducing cartridge pointers or executing original machine code. The
   initial M1A1 slice uses its recovered retail drive constants; other vehicle
   tables remain outside this slice.
+- Persistent state uses a standard 32 KiB Controller Pak filesystem image and
+  retains the retail 256-byte BattleTanx game-file payload and byte-sum
+  checksum. The host supplies durable per-user storage; it does not reinterpret
+  the payload as a host-native structure.
 - Linux x86-64 is normally LP64, while Windows x64 is LLP64. Neither host data
   model implicitly reproduces the N64 o32 ABI.
 

@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -20,6 +21,7 @@ class Platform {
     virtual void present(std::span<const std::uint32_t> pixels,int width,int height)=0;
 
     static std::unique_ptr<Platform> create(std::string_view title);
+    static std::filesystem::path controller_pak_path();
 };
 
 } // namespace battletanx

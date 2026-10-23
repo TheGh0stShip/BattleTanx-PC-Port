@@ -1,5 +1,6 @@
 #include "battletanx/angle.hpp"
 #include "battletanx/bundle.hpp"
+#include "battletanx/controller_pak.hpp"
 #include "battletanx/lzari.hpp"
 #include "battletanx/level.hpp"
 #include "battletanx/platform.hpp"
@@ -67,7 +68,7 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world,
         const auto input=battletanx::translate_player_input(current[0],previous[0]);
         previous=current;
         battletanx::update_player_tank(tank,input,navigation,angles);
-        battletanx::try_fire_player_projectile(projectile,tank,input,angles);
+        battletanx::try_fire_player_projectile(projectile,tank,input,navigation,angles);
         battletanx::update_player_projectile(projectile,navigation);
         pixels.fill(0x00101820U);
         fill_rectangle(pixels,24,24,battletanx::native_width-48,4,0x00608090U);
@@ -122,6 +123,16 @@ int main(int argc, char** argv) {
     }
 
     try {
+        const auto pak_path=battletanx::Platform::controller_pak_path();
+        auto pak=battletanx::load_controller_pak_record(pak_path);
+        if (!pak) {
+            battletanx::write_controller_pak_record(
+                pak_path,battletanx::ControllerPakRecord{});
+            pak=battletanx::load_controller_pak_record(pak_path);
+        }
+        if (!pak) throw std::runtime_error("failed to mount virtual Controller Pak");
+        std::cout << "Mounted verified Controller Pak image at "
+                  << pak_path.string() << '\n';
         const auto rom = battletanx::Rom::load_verified(argv[show_window?2:1]);
         std::cout << "Verified BattleTanx " << rom.header().game_code
                   << " Rev " << static_cast<unsigned>(rom.header().revision)

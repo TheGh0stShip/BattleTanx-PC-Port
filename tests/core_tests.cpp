@@ -1,6 +1,7 @@
 #include "battletanx/angle.hpp"
 #include "battletanx/big_endian.hpp"
 #include "battletanx/bundle.hpp"
+#include "battletanx/controller_pak.hpp"
 #include "battletanx/gameplay.hpp"
 #include "battletanx/geometry.hpp"
 #include "battletanx/host_input.hpp"
@@ -13,6 +14,8 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
@@ -41,6 +44,39 @@ void put_u32(std::vector<std::uint8_t>& bytes,std::size_t offset,std::uint32_t v
     } while (false)
 
 int main() {
+    {
+        battletanx::ControllerPakRecord record;
+        record.bytes[4]=1U;
+        record.bytes[0]=0U;
+        record.bytes[1]=0U;
+        record.bytes[2]=0U;
+        record.bytes[3]=1U;
+        CHECK(battletanx::controller_pak_checksum(record)==1U);
+        CHECK(battletanx::controller_pak_checksum_valid(record));
+        record.bytes[0xFFU]=0xFEU;
+        CHECK(!battletanx::controller_pak_checksum_valid(record));
+
+        const auto path=std::filesystem::temp_directory_path()/
+                        "battletanx-controller-pak-test.mpk";
+        std::filesystem::remove(path);
+        CHECK(!battletanx::load_controller_pak_record(path));
+        battletanx::write_controller_pak_record(path,record);
+        CHECK(std::filesystem::file_size(path)==32U*1024U);
+        const auto loaded=battletanx::load_controller_pak_record(path);
+        CHECK(loaded && loaded->bytes[4]==1U && loaded->bytes[0xFFU]==0xFEU);
+        CHECK(battletanx::controller_pak_checksum_valid(*loaded));
+        {
+            std::fstream image(path,std::ios::binary|std::ios::in|std::ios::out);
+            image.seekp(5U*256U+4U);
+            image.put(static_cast<char>(0x7FU));
+        }
+        bool corrupt_rejected=false;
+        try { static_cast<void>(battletanx::load_controller_pak_record(path)); }
+        catch (const std::runtime_error&) { corrupt_rejected=true; }
+        CHECK(corrupt_rejected);
+        std::filesystem::remove(path);
+    }
+
     {
         const auto descriptors=battletanx::level_stream_descriptors();
         CHECK(descriptors.size()==22U);
@@ -230,12 +266,14 @@ int main() {
         battletanx::PlayerInput fire{};
         fire.held=0x8000U;
         fire.pressed=0x8000U;
-        CHECK(battletanx::try_fire_player_projectile(projectile,tank,fire,angles));
+        CHECK(battletanx::try_fire_player_projectile(
+            projectile,tank,fire,drive_nav,angles));
         CHECK(projectile.active && projectile.frames_remaining==120U);
         const float projectile_x=projectile.x;
         battletanx::update_player_projectile(projectile,drive_nav);
         CHECK(projectile.active && projectile.x>projectile_x);
-        CHECK(!battletanx::try_fire_player_projectile(projectile,tank,fire,angles));
+        CHECK(!battletanx::try_fire_player_projectile(
+            projectile,tank,fire,drive_nav,angles));
     }
 
     {

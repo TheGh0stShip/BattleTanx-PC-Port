@@ -123,16 +123,23 @@ void update_player_tank(PlayerTank& tank,const PlayerInput& input,
 }
 
 bool try_fire_player_projectile(PlayerProjectile& projectile,const PlayerTank& tank,
-                                const PlayerInput& input,const AngleTable& angles) {
+                                const PlayerInput& input,const NavigationLevel& navigation,
+                                const AngleTable& angles) {
     if (projectile.active || (input.held&button_a)==0U) return false;
     constexpr float muzzle_offset=28.0F;
     constexpr float projectile_speed=18.0F;
     const auto angle=degrees_to_angle(tank.turret_degrees);
     const float direction_x=angles.sine(angle);
     const float direction_z=angles.cosine(angle);
-    projectile={tank.x+direction_x*muzzle_offset,tank.z+direction_z*muzzle_offset,
+    const NavigationVertex origin{tank.x,tank.z};
+    const NavigationVertex muzzle{
+        tank.x+direction_x*muzzle_offset,tank.z+direction_z*muzzle_offset};
+    const auto trace=trace_navigation_segment(
+        navigation,tank.navigation_triangle,origin,muzzle);
+    if (trace.stop!=NavigationTraceStop::target) return false;
+    projectile={muzzle.x,muzzle.z,
                 direction_x*projectile_speed,direction_z*projectile_speed,
-                tank.navigation_triangle,120U,true};
+                trace.triangle,120U,true};
     return true;
 }
 
