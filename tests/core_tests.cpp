@@ -100,17 +100,30 @@ int main() {
         put_u32(navigation,0x18U,0x60U);
         put_u32(navigation,0x1CU,0x62U);
         put_u32(navigation,0x20U,0x02000000U);
-        put_u32(navigation,0x30U,0x3F800000U);
-        put_u32(navigation,0x34U,0x40000000U);
+        put_u32(navigation,0x30U,0x00000000U);
+        put_u32(navigation,0x34U,0x00000000U);
+        put_u32(navigation,0x38U,0x00000000U);
+        put_u32(navigation,0x3CU,0x40C00000U);
+        put_u32(navigation,0x40U,0x40C00000U);
+        put_u32(navigation,0x44U,0x00000000U);
         put_u16(navigation,0x54U,1U);
         put_u16(navigation,0x58U,2U);
         put_u16(navigation,0x5CU,3U);
         navigation[0x61U]=5U;
         navigation[0x62U+5U]=1U;
-        const auto nav=battletanx::parse_navigation_level(navigation);
-        CHECK(nav.vertices.size()==4U && nav.vertices[1].x==1.0F && nav.vertices[1].z==2.0F);
+        auto nav=battletanx::parse_navigation_level(navigation);
+        CHECK(nav.vertices.size()==4U && nav.vertices[2].x==0.0F && nav.vertices[2].z==6.0F);
         CHECK(nav.triangles.size()==2U && nav.triangles[1].kind==5U);
         CHECK(nav.triangles[1].corners[2].vertex==3U && nav.kind_enabled[5]==1U);
+        const auto center=battletanx::navigation_triangle_centroid(nav,1U);
+        CHECK(center.x==2.0F && center.z==2.0F);
+        const auto midpoint=battletanx::navigation_edge_midpoint(nav,3U);
+        CHECK(midpoint.x==0.0F && midpoint.z==3.0F);
+        CHECK(battletanx::navigation_point_inside_triangle(nav,{1.0F,1.0F},1U));
+        CHECK(!battletanx::navigation_point_inside_triangle(nav,{5.0F,5.0F},1U));
+        CHECK(battletanx::find_nearest_navigation_triangle(nav,{2.0F,2.0F})==0U);
+        nav.kind_enabled[5]=0U;
+        CHECK(battletanx::find_nearest_navigation_triangle(nav,{2.0F,2.0F})==1U);
     }
 
     {

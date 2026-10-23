@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -217,6 +219,86 @@ NavigationLevel load_navigation_level(const Rom& rom,const LevelStreamDescriptor
                                  " has no navigation stream");
     }
     return parse_navigation_level(decode(rom,*descriptor.navigation));
+}
+
+NavigationVertex navigation_triangle_centroid(const NavigationLevel& level,
+                                               std::uint16_t triangle) {
+    if (triangle==0U || triangle>=level.triangles.size()) {
+        throw std::out_of_range("navigation triangle index is invalid");
+    }
+    NavigationVertex result{};
+    for (const auto& corner : level.triangles[triangle].corners) {
+        if (corner.vertex==0U || corner.vertex>=level.vertices.size()) {
+            throw std::out_of_range("navigation triangle vertex index is invalid");
+        }
+        result.x+=level.vertices[corner.vertex].x;
+        result.z+=level.vertices[corner.vertex].z;
+    }
+    result.x/=3.0F;
+    result.z/=3.0F;
+    return result;
+}
+
+NavigationVertex navigation_edge_midpoint(const NavigationLevel& level,std::uint16_t corner) {
+    const std::size_t triangle=corner/3U;
+    const std::size_t within=corner%3U;
+    if (triangle==0U || triangle>=level.triangles.size()) {
+        throw std::out_of_range("navigation corner index is invalid");
+    }
+    const auto& corners=level.triangles[triangle].corners;
+    const std::size_t first=corners[within].vertex;
+    const std::size_t second=corners[(within+1U)%3U].vertex;
+    if (first==0U || second==0U || first>=level.vertices.size() ||
+        second>=level.vertices.size()) {
+        throw std::out_of_range("navigation edge vertex index is invalid");
+    }
+    return {(level.vertices[first].x+level.vertices[second].x)/2.0F,
+            (level.vertices[first].z+level.vertices[second].z)/2.0F};
+}
+
+bool navigation_point_inside_triangle(const NavigationLevel& level,
+                                      NavigationVertex point,std::uint16_t triangle) {
+    if (triangle==0U || triangle>=level.triangles.size()) return false;
+    const auto& corners=level.triangles[triangle].corners;
+    for (std::size_t index=0; index<corners.size(); ++index) {
+        const std::size_t next=(index+1U)%corners.size();
+        if (corners[index].vertex==0U || corners[next].vertex==0U ||
+            corners[index].vertex>=level.vertices.size() ||
+            corners[next].vertex>=level.vertices.size()) return false;
+        const auto& a=level.vertices[corners[index].vertex];
+        const auto& origin=level.vertices[corners[next].vertex];
+        const float az=a.z-origin.z;
+        const float ax=a.x-origin.x;
+        const float px=point.x-origin.x;
+        const float pz=point.z-origin.z;
+        if (!(az*px-pz*ax<0.0F)) return false;
+    }
+    return true;
+}
+
+std::uint16_t find_nearest_navigation_triangle(const NavigationLevel& level,
+                                               NavigationVertex point) {
+    std::uint16_t nearest_distance=16000U;
+    std::uint16_t nearest=0U;
+    const std::size_t limit=std::min<std::size_t>(
+        level.triangles.size(),static_cast<std::size_t>(
+            std::numeric_limits<std::uint16_t>::max())+1U);
+    for (std::size_t index=1U; index<limit; ++index) {
+        const auto& triangle=level.triangles[index];
+        if (level.kind_enabled[triangle.kind]!=0U) continue;
+        const auto center=navigation_triangle_centroid(level,static_cast<std::uint16_t>(index));
+        const float dx=std::abs(point.x-center.x);
+        const float dz=std::abs(point.z-center.z);
+        const float major=std::max(dx,dz);
+        const float minor=std::min(dx,dz);
+        const float distance=major+minor*3.0F/8.0F;
+        if (std::isfinite(distance) && distance>=0.0F &&
+            distance<static_cast<float>(nearest_distance)) {
+            nearest_distance=static_cast<std::uint16_t>(distance);
+            nearest=static_cast<std::uint16_t>(index);
+        }
+    }
+    return nearest;
 }
 
 } // namespace battletanx

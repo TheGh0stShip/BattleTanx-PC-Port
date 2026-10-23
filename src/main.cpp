@@ -30,7 +30,24 @@ void fill_rectangle(std::array<std::uint32_t,battletanx::native_width*battletanx
     }
 }
 
-void run_platform_diagnostic(const battletanx::WorldLevel& world) {
+void draw_line(std::array<std::uint32_t,battletanx::native_width*battletanx::native_height>& pixels,
+               int x0,int y0,int x1,int y1,std::uint32_t color) {
+    const int dx=std::abs(x1-x0);
+    const int sx=x0<x1 ? 1 : -1;
+    const int dy=-std::abs(y1-y0);
+    const int sy=y0<y1 ? 1 : -1;
+    int error=dx+dy;
+    for (;;) {
+        fill_rectangle(pixels,x0,y0,2,2,color);
+        if (x0==x1 && y0==y1) break;
+        const int doubled=2*error;
+        if (doubled>=dy) { error+=dy; x0+=sx; }
+        if (doubled<=dx) { error+=dx; y0+=sy; }
+    }
+}
+
+void run_platform_diagnostic(const battletanx::WorldLevel& world,
+                             const battletanx::NavigationLevel& navigation) {
     auto platform=battletanx::Platform::create("BattleTanx native source port");
     std::array<std::uint32_t,battletanx::native_width*battletanx::native_height> pixels{};
     std::array<battletanx::ControllerPad,4> previous{};
@@ -45,8 +62,21 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world) {
         min_x=std::min(min_x,item.x); max_x=std::max(max_x,item.x);
         min_z=std::min(min_z,item.z); max_z=std::max(max_z,item.z);
     }
+    for (const auto& vertex : navigation.vertices) {
+        if (!std::isfinite(vertex.x) || !std::isfinite(vertex.z)) continue;
+        min_x=std::min(min_x,vertex.x); max_x=std::max(max_x,vertex.x);
+        min_z=std::min(min_z,vertex.z); max_z=std::max(max_z,vertex.z);
+    }
     const float span_x=std::max(max_x-min_x,1.0F);
     const float span_z=std::max(max_z-min_z,1.0F);
+    const auto screen_x=[&](float value) {
+        return 32+static_cast<int>((value-min_x)/span_x*(battletanx::native_width-64));
+    };
+    const auto screen_y=[&](float value) {
+        return 32+static_cast<int>((value-min_z)/span_z*(battletanx::native_height-64));
+    };
+    float cursor_x=static_cast<float>(battletanx::native_width/2);
+    float cursor_y=static_cast<float>(battletanx::native_height/2);
     while (platform->pump(current)) {
         const auto frame_start=std::chrono::steady_clock::now();
         const auto input=battletanx::translate_player_input(current[0],previous[0]);
@@ -60,16 +90,31 @@ void run_platform_diagnostic(const battletanx::WorldLevel& world) {
                        battletanx::native_height-48,0x00608090U);
         for (const auto& item : world.items) {
             if (!std::isfinite(item.x) || !std::isfinite(item.z)) continue;
-            const int x=32+static_cast<int>((item.x-min_x)/span_x*
-                                            (battletanx::native_width-64));
-            const int y=32+static_cast<int>((item.z-min_z)/span_z*
-                                            (battletanx::native_height-64));
+            const int x=screen_x(item.x);
+            const int y=screen_y(item.z);
             fill_rectangle(pixels,x-1,y-1,3,3,0x0060C070U);
         }
-        const int center_x=battletanx::native_width/2+input.stick_x;
-        const int center_y=battletanx::native_height/2-input.stick_y;
-        fill_rectangle(pixels,center_x-8,center_y-8,16,16,
-                       input.held!=0U ? 0x00F0B040U : 0x004080C0U);
+        cursor_x=std::clamp(cursor_x+static_cast<float>(input.stick_x)*0.08F,
+                            32.0F,static_cast<float>(battletanx::native_width-32));
+        cursor_y=std::clamp(cursor_y-static_cast<float>(input.stick_y)*0.08F,
+                            32.0F,static_cast<float>(battletanx::native_height-32));
+        const battletanx::NavigationVertex query{
+            min_x+(cursor_x-32.0F)*span_x/static_cast<float>(battletanx::native_width-64),
+            min_z+(cursor_y-32.0F)*span_z/static_cast<float>(battletanx::native_height-64)};
+        const auto nearest=battletanx::find_nearest_navigation_triangle(navigation,query);
+        const bool inside=nearest!=0U &&
+            battletanx::navigation_point_inside_triangle(navigation,query,nearest);
+        if (nearest!=0U) {
+            const auto& corners=navigation.triangles[nearest].corners;
+            for (std::size_t index=0; index<corners.size(); ++index) {
+                const auto& a=navigation.vertices[corners[index].vertex];
+                const auto& b=navigation.vertices[corners[(index+1U)%corners.size()].vertex];
+                draw_line(pixels,screen_x(a.x),screen_y(a.z),screen_x(b.x),screen_y(b.z),
+                          inside ? 0x00F0D040U : 0x00D06040U);
+            }
+        }
+        fill_rectangle(pixels,static_cast<int>(cursor_x)-5,static_cast<int>(cursor_y)-5,10,10,
+                       inside ? 0x0040E080U : 0x004080C0U);
         platform->present(pixels,battletanx::native_width,battletanx::native_height);
         std::this_thread::sleep_until(frame_start+frame_period);
     }
@@ -110,6 +155,7 @@ int main(int argc, char** argv) {
         std::cout << "Loaded retail 16-bit angle table: "
                   << battletanx::AngleTable::value_count << " samples\n";
         std::optional<battletanx::WorldLevel> preview_world;
+        std::optional<battletanx::NavigationLevel> preview_navigation;
         std::size_t world_groups=0U;
         std::size_t world_items=0U;
         std::size_t navigation_triangles=0U;
@@ -119,15 +165,16 @@ int main(int argc, char** argv) {
             world_items+=world.items.size();
             if (descriptor.index==1) preview_world=std::move(world);
             if (descriptor.navigation) {
-                navigation_triangles+=
-                    battletanx::load_navigation_level(rom,descriptor).triangles.size();
+                auto navigation=battletanx::load_navigation_level(rom,descriptor);
+                navigation_triangles+=navigation.triangles.size();
+                if (descriptor.index==1) preview_navigation=std::move(navigation);
             }
         }
         std::cout << "Validated 22 world streams and 18 navigation streams: "
                   << world_groups << " groups, " << world_items << " placements, "
                   << navigation_triangles << " navigation triangles\n";
         std::cout << "Native runtime foundation is ready; gameplay bring-up is in progress.\n";
-        if (show_window) run_platform_diagnostic(*preview_world);
+        if (show_window) run_platform_diagnostic(*preview_world,*preview_navigation);
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';
         return 1;

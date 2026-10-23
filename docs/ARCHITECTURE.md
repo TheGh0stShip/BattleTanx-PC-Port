@@ -42,6 +42,9 @@ does not execute cartridge code.
 - The 22 world streams and 18 navigation streams are decompressed from audited
   ROM ranges into host-owned records. Their section boundaries, counts, shape
   references, vertex references, and adjacency indices are checked first.
+- Recovered navigation queries operate on those host-owned records and retain
+  the retail triangle orientation, blocked-kind lookup, and octagonal-distance
+  behavior without reproducing the original address space.
 - Linux x86-64 is normally LP64, while Windows x64 is LLP64. Neither host data
   model implicitly reproduces the N64 o32 ABI.
 
